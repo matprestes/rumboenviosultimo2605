@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { EnvioForm } from '@/components/forms/envio-form';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { PackagePlus, ArrowLeft } from 'lucide-react';
+import { PackagePlus, ArrowLeft, Loader2 } from 'lucide-react'; // Added Loader2 here
 import { createEnvioAction, getClientesForSelect, getEmpresasForSelect, getTiposPaqueteForSelect, getTiposServicioForSelect } from '@/actions/envio-actions';
 import type { Cliente, Empresa, Envio, TipoPaquete, TipoServicio } from '@/lib/schemas';
 import { useToast } from '@/hooks/use-toast';
