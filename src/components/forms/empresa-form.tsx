@@ -29,7 +29,7 @@ import { geocodeAddress, type GeocodeResult, getGoogleMapsApi } from '@/services
 import { useToast } from '@/hooks/use-toast';
 
 interface EmpresaFormProps {
-  onSubmit: (data: Empresa) => Promise<void>;
+  onSubmit: (data: Empresa) => Promise<void | { success: boolean; error?: string; data?: Empresa }>;
   defaultValues?: Partial<Empresa>;
   isSubmitting?: boolean;
   submitButtonText?: string;
@@ -37,7 +37,7 @@ interface EmpresaFormProps {
 
 export function EmpresaForm({
   onSubmit,
-  defaultValues,
+  defaultValues: initialDefaultValues,
   isSubmitting = false,
   submitButtonText = "Guardar Empresa"
 }: EmpresaFormProps) {
@@ -45,15 +45,38 @@ export function EmpresaForm({
   const [isMapsApiReady, setIsMapsApiReady] = React.useState(false);
   const [isGeocoding, setIsGeocoding] = React.useState(false);
   const [geocodedData, setGeocodedData] = React.useState<GeocodeResult | null>(
-    defaultValues?.latitud && defaultValues?.longitud && defaultValues?.direccion ? { lat: defaultValues.latitud, lng: defaultValues.longitud, formattedAddress: defaultValues.direccion } : null
+    initialDefaultValues?.latitud && initialDefaultValues?.longitud && initialDefaultValues?.direccion ? { lat: initialDefaultValues.latitud, lng: initialDefaultValues.longitud, formattedAddress: initialDefaultValues.direccion } : null
   );
 
   const form = useForm<Empresa>({
-    resolver: zodResolver(EmpresaSchema.omit({ created_at: true, updated_at: true })),
-    defaultValues: {
-      estado: "activo",
-      ...defaultValues,
-    },
+    resolver: zodResolver(EmpresaSchema.omit({ 
+      id: true, 
+      created_at: true, 
+      updated_at: true, 
+      user_id: true 
+    })),
+    defaultValues: initialDefaultValues
+      ? {
+          ...initialDefaultValues,
+          nombre: initialDefaultValues.nombre || "",
+          direccion: initialDefaultValues.direccion || "",
+          telefono: initialDefaultValues.telefono ?? "",
+          email: initialDefaultValues.email ?? "",
+          notas: initialDefaultValues.notas ?? "",
+          estado: initialDefaultValues.estado || "activo",
+          latitud: initialDefaultValues.latitud ?? null,
+          longitud: initialDefaultValues.longitud ?? null,
+        }
+      : {
+          nombre: "",
+          direccion: "",
+          latitud: null,
+          longitud: null,
+          telefono: "",
+          email: "",
+          notas: "",
+          estado: "activo",
+        },
   });
 
   React.useEffect(() => {
@@ -70,18 +93,37 @@ export function EmpresaForm({
   }, [toast]);
 
   React.useEffect(() => {
-    if (defaultValues) {
+    if (initialDefaultValues) {
       form.reset({
-        estado: "activo",
-        ...defaultValues,
+        ...initialDefaultValues,
+        nombre: initialDefaultValues.nombre || "",
+        direccion: initialDefaultValues.direccion || "",
+        telefono: initialDefaultValues.telefono ?? "",
+        email: initialDefaultValues.email ?? "",
+        notas: initialDefaultValues.notas ?? "",
+        estado: initialDefaultValues.estado || "activo",
+        latitud: initialDefaultValues.latitud ?? null,
+        longitud: initialDefaultValues.longitud ?? null,
       });
-      if (defaultValues.latitud && defaultValues.longitud && defaultValues.direccion) {
-        setGeocodedData({ lat: defaultValues.latitud, lng: defaultValues.longitud, formattedAddress: defaultValues.direccion });
+      if (initialDefaultValues.latitud && initialDefaultValues.longitud && initialDefaultValues.direccion) {
+        setGeocodedData({ lat: initialDefaultValues.latitud, lng: initialDefaultValues.longitud, formattedAddress: initialDefaultValues.direccion });
       } else {
         setGeocodedData(null);
       }
+    } else {
+        form.reset({
+            nombre: "",
+            direccion: "",
+            latitud: null,
+            longitud: null,
+            telefono: "",
+            email: "",
+            notas: "",
+            estado: "activo",
+        });
+        setGeocodedData(null);
     }
-  }, [defaultValues, form]);
+  }, [initialDefaultValues, form]);
 
 
   const handleGeocode = async () => {
@@ -105,7 +147,7 @@ export function EmpresaForm({
       if (result) {
         form.setValue("latitud", result.lat, { shouldValidate: true });
         form.setValue("longitud", result.lng, { shouldValidate: true });
-        form.setValue("direccion", result.formattedAddress, { shouldValidate: true }); // Update address field
+        form.setValue("direccion", result.formattedAddress, { shouldValidate: true });
         setGeocodedData(result);
         toast({
           title: "Geocodificación Exitosa",
@@ -115,7 +157,6 @@ export function EmpresaForm({
       } else {
         form.setValue("latitud", null);
         form.setValue("longitud", null);
-        // Do not clear the address field if geocoding fails
         toast({
           title: "Error de Geocodificación",
           description: "No se pudo encontrar la dirección o está fuera de Mar del Plata.",
@@ -139,7 +180,7 @@ export function EmpresaForm({
   const handleFormSubmit = async (data: Empresa) => {
     const dataToSubmit: Empresa = {
       ...data,
-      id: defaultValues?.id || data.id,
+      id: initialDefaultValues?.id || data.id,
       latitud: form.getValues("latitud"),
       longitud: form.getValues("longitud"),
     };
@@ -253,7 +294,7 @@ export function EmpresaForm({
           render={({ field }) => (
             <FormItem>
               <FormLabel>Estado</FormLabel>
-              <Select onValueChange={field.onChange} defaultValue={field.value}>
+              <Select onValueChange={field.onChange} value={field.value} defaultValue={field.value}>
                 <FormControl>
                   <SelectTrigger>
                     <SelectValue placeholder="Seleccione un estado" />
@@ -281,3 +322,4 @@ export function EmpresaForm({
   );
 }
 
+    

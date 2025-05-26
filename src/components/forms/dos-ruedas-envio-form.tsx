@@ -25,9 +25,9 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Loader2, MapPin, CheckCircle, AlertTriangle, User } from 'lucide-react';
-import { geocodeAddress, type GeocodeResult } from '@/services/google-maps-service';
+import { geocodeAddress, type GeocodeResult, getGoogleMapsApi } from '@/services/google-maps-service';
 import { useToast } from '@/hooks/use-toast';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'; // Corrected CardDescription import
 
 interface DosRuedasEnvioFormProps {
   onSubmit: (data: DosRuedasEnvioFormValues) => Promise<{ success: boolean; error?: string; data?: any }>;
@@ -43,6 +43,7 @@ export function DosRuedasEnvioForm({
   setIsSubmitting,
 }: DosRuedasEnvioFormProps) {
   const { toast } = useToast();
+  const [isMapsApiReady, setIsMapsApiReady] = React.useState(false);
   const [isGeocodingDest, setIsGeocodingDest] = React.useState(false);
   const [geocodedDest, setGeocodedDest] = React.useState<GeocodeResult | null>(null);
   
@@ -55,26 +56,41 @@ export function DosRuedasEnvioForm({
       nombre_destinatario: '',
       telefono_destinatario: '',
       direccion_destino: '',
-      horario_retiro_desde: '',
-      horario_entrega_hasta: '',
+      horario_retiro_desde: "",
+      horario_entrega_hasta: "",
       precio: 0,
-      detalles_adicionales: '',
+      detalles_adicionales: "",
     },
   });
+  
+  React.useEffect(() => {
+    getGoogleMapsApi()
+      .then(() => setIsMapsApiReady(true))
+      .catch((error) => {
+        console.error("Failed to load Google Maps API in DosRuedasEnvioForm:", error);
+        toast({
+          title: "Error de Mapa",
+          description: "No se pudo cargar la API de Google Maps. La geocodificación no estará disponible.",
+          variant: "destructive",
+        });
+      });
+  }, [toast]);
 
   const handleSenderChange = (clienteId: string) => {
     const cliente = clientes.find(c => c.id === clienteId);
     setSelectedSender(cliente || null);
     if (cliente) {
       form.setValue('remitente_cliente_id', cliente.id!, { shouldValidate: true });
-      // The form will display sender info based on `selectedSender` state
-      // `direccion_origen` and its coordinates will be passed to the action from `selectedSender`
     } else {
       form.setValue('remitente_cliente_id', '', { shouldValidate: true });
     }
   };
 
   const handleGeocodeDest = async () => {
+    if (!isMapsApiReady) {
+      toast({ title: "API de Mapas no lista", description: "Espere a que cargue.", variant: "default" });
+      return;
+    }
     const addressValue = form.getValues("direccion_destino");
     if (!addressValue || addressValue.trim().length < 5) {
       toast({ title: "Error de Dirección", description: "Por favor, ingrese una dirección de entrega más completa.", variant: "destructive" });
@@ -85,10 +101,8 @@ export function DosRuedasEnvioForm({
     try {
       const result = await geocodeAddress(addressValue);
       if (result) {
-        // Lat/lng for destination will be passed to the action, not directly set in this form's state
-        // but we can update the address field to the formatted one
         form.setValue("direccion_destino", result.formattedAddress, { shouldValidate: true });
-        setGeocodedDest(result); // Store for feedback
+        setGeocodedDest(result); 
         toast({ title: "Geocodificación Exitosa", description: `Dirección de entrega verificada: ${result.formattedAddress}` });
       } else {
         toast({ title: "Error de Geocodificación", description: "No se pudo encontrar la dirección de entrega o está fuera de Mar del Plata.", variant: "destructive" });
@@ -106,9 +120,22 @@ export function DosRuedasEnvioForm({
         return;
     }
     setIsSubmitting(true);
-    // The action will handle fetching full sender details and merging
-    await onSubmit(formData); 
+    const result = await onSubmit(formData); 
     setIsSubmitting(false);
+     if (result.success) {
+      form.reset({ // Reset to initial empty values
+        remitente_cliente_id: '',
+        nombre_destinatario: '',
+        telefono_destinatario: '',
+        direccion_destino: '',
+        horario_retiro_desde: "",
+        horario_entrega_hasta: "",
+        precio: 0,
+        detalles_adicionales: "",
+      });
+      setSelectedSender(null);
+      setGeocodedDest(null);
+    }
   };
 
   return (
@@ -198,10 +225,11 @@ export function DosRuedasEnvioForm({
                   <FormLabel>Dirección de entrega*</FormLabel>
                   <div className="flex items-center gap-2">
                     <FormControl className="flex-grow"><Input placeholder="Ej: 11 de Septiembre 3687, Mar del Plata" {...field} /></FormControl>
-                    <Button type="button" onClick={handleGeocodeDest} disabled={isGeocodingDest} variant="outline" size="icon" title="Verificar Dirección">
+                    <Button type="button" onClick={handleGeocodeDest} disabled={isGeocodingDest || !isMapsApiReady} variant="outline" size="icon" title="Verificar Dirección">
                       {isGeocodingDest ? <Loader2 className="h-4 w-4 animate-spin" /> : <MapPin className="h-4 w-4" />}
                     </Button>
                   </div>
+                  {!isMapsApiReady && <FormDescription className="text-orange-600">API de Mapas no disponible.</FormDescription>}
                   {geocodedDest?.formattedAddress && <FormDescription className="text-green-600 flex items-center gap-1 mt-1"><CheckCircle size={16} /> Dirección verificada: {geocodedDest.formattedAddress}</FormDescription>}
                   {!isGeocodingDest && form.formState.dirtyFields.direccion_destino && !geocodedDest?.formattedAddress && <FormDescription className="text-orange-600 flex items-center gap-1 mt-1"><AlertTriangle size={16}/> Verifique la dirección.</FormDescription>}
                   <FormMessage />
@@ -242,11 +270,14 @@ export function DosRuedasEnvioForm({
             </div>
             <FormField
               control={form.control}
-              name="precio" // "Monto a cobrar"
+              name="precio"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Monto a cobrar*</FormLabel>
-                  <FormControl><Input type="number" step="0.01" placeholder="0.00" {...field} /></FormControl>
+                  <FormControl><Input type="number" step="0.01" placeholder="0.00" {...field} 
+                    onChange={e => field.onChange(parseFloat(e.target.value) || 0)}
+                    value={field.value ?? 0}
+                  /></FormControl>
                   <FormMessage />
                 </FormItem>
               )}
@@ -265,8 +296,8 @@ export function DosRuedasEnvioForm({
           </CardContent>
         </Card>
 
-        <Button type="submit" className="w-full bg-teal-500 hover:bg-teal-600 text-white" disabled={isSubmitting || isGeocodingDest}>
-          {isSubmitting || isGeocodingDest ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+        <Button type="submit" className="w-full bg-teal-500 hover:bg-teal-600 text-white" disabled={isSubmitting || isGeocodingDest || !isMapsApiReady}>
+          {(isSubmitting || isGeocodingDest) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           Hacer pedido
         </Button>
       </form>
@@ -274,3 +305,4 @@ export function DosRuedasEnvioForm({
   );
 }
 
+    

@@ -70,7 +70,7 @@ export function RepartoLoteForm({
       empresa_id: undefined,
       fecha_reparto: new Date(),
       repartidor_id: undefined,
-      notas_reparto: '',
+      notas_reparto: "", // Initialize optional string
       asignaciones_clientes: [],
     },
   });
@@ -86,7 +86,7 @@ export function RepartoLoteForm({
     if (selectedEmpresaId) {
       const fetchClientes = async () => {
         setIsLoadingClientes(true);
-        form.setValue('asignaciones_clientes', []); // Clear previous assignments
+        form.setValue('asignaciones_clientes', []); 
         try {
           const data = await getClientesByEmpresaIdAction(selectedEmpresaId);
           setClientesEmpresa(data);
@@ -108,7 +108,12 @@ export function RepartoLoteForm({
     const existingIndex = fields.findIndex(field => field.cliente_id === clienteId);
     if (isSelected) {
       if (existingIndex === -1) {
-        append({ cliente_id: clienteId, tipo_servicio_id: '', precio: 0, notas_envio: '' });
+        append({ 
+            cliente_id: clienteId, 
+            tipo_servicio_id: tiposServicio.length > 0 ? tiposServicio[0].id! : '', // Default if available
+            precio: 0, 
+            notas_envio: '' 
+        });
       }
     } else {
       if (existingIndex !== -1) {
@@ -122,10 +127,15 @@ export function RepartoLoteForm({
     const result = await onSubmit(formData);
     setIsSubmitting(false);
     if (result.success) {
-      form.reset();
-      setClientesEmpresa([]); // Clear clients list too
+      form.reset({ // Reset to initial default values
+        empresa_id: undefined,
+        fecha_reparto: new Date(),
+        repartidor_id: undefined,
+        notas_reparto: "",
+        asignaciones_clientes: [],
+      });
+      setClientesEmpresa([]); 
     } else if (result.errors) {
-        // Handle specific field errors if needed, or just show general error
         console.error("Form validation errors (Lote):", result.errors);
     }
   };
@@ -263,6 +273,7 @@ export function RepartoLoteForm({
                                 <FormLabel className="text-xs flex items-center gap-1"><Banknote size={14}/>Precio</FormLabel>
                                 <FormControl><Input type="number" step="0.01" className="h-9 text-xs" placeholder="0.00" {...field} 
                                 onChange={e => field.onChange(parseFloat(e.target.value) || 0)}
+                                value={field.value ?? 0}
                                 /></FormControl>
                                 <FormMessage className="text-xs"/>
                               </FormItem>
@@ -297,3 +308,5 @@ export function RepartoLoteForm({
     </Form>
   );
 }
+
+    

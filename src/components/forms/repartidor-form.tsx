@@ -1,10 +1,10 @@
 
 "use client";
 
-import * as React from 'react'; // Changed from type-only import
+import * as React from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { RepartidorSchema, type Repartidor, type RepartidorFormValues, EstadoEnum } from '@/lib/schemas';
+import { RepartidorSchema, type Repartidor, EstadoEnum } from '@/lib/schemas';
 import { Button } from '@/components/ui/button';
 import {
   Form,
@@ -25,39 +25,51 @@ import {
 import { Loader2 } from 'lucide-react';
 
 interface RepartidorFormProps {
-  onSubmit: (data: Repartidor) => Promise<void>; // Changed to accept full Repartidor
-  defaultValues?: Partial<Repartidor>; // Use full Repartidor
+  onSubmit: (data: Repartidor) => Promise<void | { success: boolean; error?: string; data?: Repartidor }>;
+  defaultValues?: Partial<Repartidor>; 
   isSubmitting?: boolean;
   submitButtonText?: string;
 }
 
 export function RepartidorForm({
   onSubmit,
-  defaultValues,
+  defaultValues: initialDefaultValues,
   isSubmitting = false,
   submitButtonText = "Guardar Repartidor"
 }: RepartidorFormProps) {
-  const form = useForm<Repartidor>({ // Use full Repartidor
-    resolver: zodResolver(RepartidorSchema.omit({ created_at: true, updated_at: true })),
-    defaultValues: {
-      estado: "activo",
-      ...defaultValues,
-    },
+  const form = useForm<Repartidor>({ 
+    resolver: zodResolver(RepartidorSchema.omit({ id: true, created_at: true, updated_at: true, user_id: true })),
+    defaultValues: initialDefaultValues
+    ? {
+        ...initialDefaultValues,
+        nombre: initialDefaultValues.nombre || "",
+        estado: initialDefaultValues.estado || "activo",
+      }
+    : {
+        nombre: "",
+        estado: "activo",
+      },
   });
 
   React.useEffect(() => {
-    if (defaultValues) {
+    if (initialDefaultValues) {
       form.reset({
-        estado: "activo",
-        ...defaultValues,
+        ...initialDefaultValues,
+        nombre: initialDefaultValues.nombre || "",
+        estado: initialDefaultValues.estado || "activo",
       });
+    } else {
+        form.reset({
+            nombre: "",
+            estado: "activo",
+        });
     }
-  }, [defaultValues, form]);
+  }, [initialDefaultValues, form]);
 
   const handleFormSubmit = async (data: Repartidor) => {
     const dataToSubmit: Repartidor = {
       ...data,
-      id: defaultValues?.id || data.id,
+      id: initialDefaultValues?.id || data.id,
     };
     await onSubmit(dataToSubmit);
   };
@@ -85,7 +97,7 @@ export function RepartidorForm({
           render={({ field }) => (
             <FormItem>
               <FormLabel>Estado</FormLabel>
-              <Select onValueChange={field.onChange} defaultValue={field.value}>
+              <Select onValueChange={field.onChange} value={field.value} defaultValue={field.value}>
                 <FormControl>
                   <SelectTrigger>
                     <SelectValue placeholder="Seleccione un estado" />
@@ -112,3 +124,5 @@ export function RepartidorForm({
     </Form>
   );
 }
+
+    

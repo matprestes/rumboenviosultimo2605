@@ -34,7 +34,7 @@ interface EmpresaOption {
 }
 
 interface ClienteFormProps {
-  onSubmit: (data: Cliente) => Promise<void>;
+  onSubmit: (data: Cliente) => Promise<void | { success: boolean; error?: string; data?: Cliente }>;
   defaultValues?: Partial<Cliente>;
   empresas?: EmpresaOption[];
   isSubmitting?: boolean;
@@ -43,7 +43,7 @@ interface ClienteFormProps {
 
 export function ClienteForm({
   onSubmit,
-  defaultValues,
+  defaultValues: initialDefaultValues, // Renamed to avoid confusion
   empresas = [],
   isSubmitting = false,
   submitButtonText = "Guardar Cliente"
@@ -52,15 +52,43 @@ export function ClienteForm({
   const [isMapsApiReady, setIsMapsApiReady] = React.useState(false);
   const [isGeocoding, setIsGeocoding] = React.useState(false);
   const [geocodedData, setGeocodedData] = React.useState<GeocodeResult | null>(
-    defaultValues?.latitud && defaultValues?.longitud && defaultValues?.direccion ? { lat: defaultValues.latitud, lng: defaultValues.longitud, formattedAddress: defaultValues.direccion } : null
+    initialDefaultValues?.latitud && initialDefaultValues?.longitud && initialDefaultValues?.direccion ? { lat: initialDefaultValues.latitud, lng: initialDefaultValues.longitud, formattedAddress: initialDefaultValues.direccion } : null
   );
 
   const form = useForm<Cliente>({
-    resolver: zodResolver(ClienteSchema.omit({ created_at: true, updated_at: true, empresas: true })),
-    defaultValues: {
-      estado: "activo",
-      ...defaultValues,
-    },
+    resolver: zodResolver(ClienteSchema.omit({ 
+      id: true, 
+      created_at: true, 
+      updated_at: true, 
+      empresas: true, 
+      user_id: true 
+    })),
+    defaultValues: initialDefaultValues
+      ? {
+          ...initialDefaultValues,
+          nombre: initialDefaultValues.nombre || "",
+          apellido: initialDefaultValues.apellido || "",
+          direccion: initialDefaultValues.direccion || "",
+          telefono: initialDefaultValues.telefono ?? "",
+          email: initialDefaultValues.email ?? "",
+          notas: initialDefaultValues.notas ?? "",
+          empresa_id: initialDefaultValues.empresa_id ?? null,
+          estado: initialDefaultValues.estado || "activo",
+          latitud: initialDefaultValues.latitud ?? null,
+          longitud: initialDefaultValues.longitud ?? null,
+        }
+      : {
+          nombre: "",
+          apellido: "",
+          direccion: "",
+          latitud: null,
+          longitud: null,
+          telefono: "",
+          email: "",
+          empresa_id: null, 
+          notas: "",
+          estado: "activo",
+        },
   });
 
    React.useEffect(() => {
@@ -77,18 +105,43 @@ export function ClienteForm({
   }, [toast]);
 
   React.useEffect(() => {
-    if (defaultValues) {
+    // This effect handles re-syncing the form if initialDefaultValues prop changes (e.g., navigating between edit pages)
+    // Or if we switch from create to edit by some external logic (though less common with page-based forms)
+    if (initialDefaultValues) {
       form.reset({
-        estado: "activo",
-        ...defaultValues,
+        ...initialDefaultValues,
+        nombre: initialDefaultValues.nombre || "",
+        apellido: initialDefaultValues.apellido || "",
+        direccion: initialDefaultValues.direccion || "",
+        telefono: initialDefaultValues.telefono ?? "",
+        email: initialDefaultValues.email ?? "",
+        notas: initialDefaultValues.notas ?? "",
+        empresa_id: initialDefaultValues.empresa_id ?? null,
+        estado: initialDefaultValues.estado || "activo",
+        latitud: initialDefaultValues.latitud ?? null,
+        longitud: initialDefaultValues.longitud ?? null,
       });
-      if (defaultValues.latitud && defaultValues.longitud && defaultValues.direccion) {
-        setGeocodedData({ lat: defaultValues.latitud, lng: defaultValues.longitud, formattedAddress: defaultValues.direccion });
+      if (initialDefaultValues.latitud && initialDefaultValues.longitud && initialDefaultValues.direccion) {
+        setGeocodedData({ lat: initialDefaultValues.latitud, lng: initialDefaultValues.longitud, formattedAddress: initialDefaultValues.direccion });
       } else {
         setGeocodedData(null);
       }
+    } else { // Ensure form is reset to creation defaults if initialDefaultValues becomes undefined
+        form.reset({
+            nombre: "",
+            apellido: "",
+            direccion: "",
+            latitud: null,
+            longitud: null,
+            telefono: "",
+            email: "",
+            empresa_id: null,
+            notas: "",
+            estado: "activo",
+        });
+        setGeocodedData(null);
     }
-  }, [defaultValues, form]);
+  }, [initialDefaultValues, form]);
 
   const handleGeocode = async () => {
     if (!isMapsApiReady) {
@@ -111,7 +164,7 @@ export function ClienteForm({
       if (result) {
         form.setValue("latitud", result.lat, { shouldValidate: true });
         form.setValue("longitud", result.lng, { shouldValidate: true });
-        form.setValue("direccion", result.formattedAddress, { shouldValidate: true }); // Update address field
+        form.setValue("direccion", result.formattedAddress, { shouldValidate: true }); 
         setGeocodedData(result);
         toast({
           title: "Geocodificación Exitosa",
@@ -121,7 +174,6 @@ export function ClienteForm({
       } else {
         form.setValue("latitud", null);
         form.setValue("longitud", null);
-        // Do not clear the address field if geocoding fails, let user correct it.
         toast({
           title: "Error de Geocodificación",
           description: "No se pudo encontrar la dirección o está fuera de Mar del Plata.",
@@ -144,9 +196,9 @@ export function ClienteForm({
 
   const handleFormSubmit = async (data: Cliente) => {
     const dataToSubmit: Cliente = {
-      ...data,
-      id: defaultValues?.id || data.id,
-      latitud: form.getValues("latitud"),
+      ...data, // RHF data, already coalesced to "" for empty strings in form
+      id: initialDefaultValues?.id || data.id, // Use existing ID if editing
+      latitud: form.getValues("latitud"), // Get potentially geocoded values
       longitud: form.getValues("longitud"),
       empresa_id: data.empresa_id === 'no_empresa' ? null : data.empresa_id,
     };
@@ -254,7 +306,7 @@ export function ClienteForm({
           render={({ field }) => (
             <FormItem>
               <FormLabel>Empresa Asociada (Opcional)</FormLabel>
-              <Select onValueChange={field.onChange} value={field.value === null ? 'no_empresa' : field.value || 'no_empresa'}>
+              <Select onValueChange={field.onChange} value={field.value ?? 'no_empresa'}>
                 <FormControl>
                   <SelectTrigger>
                     <SelectValue placeholder="Seleccione una empresa" />
@@ -302,7 +354,7 @@ export function ClienteForm({
           render={({ field }) => (
             <FormItem>
               <FormLabel>Estado</FormLabel>
-              <Select onValueChange={field.onChange} defaultValue={field.value}>
+              <Select onValueChange={field.onChange} value={field.value} defaultValue={field.value}>
                 <FormControl>
                   <SelectTrigger>
                     <SelectValue placeholder="Seleccione un estado" />
@@ -330,3 +382,4 @@ export function ClienteForm({
   );
 }
 
+    

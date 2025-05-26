@@ -42,6 +42,7 @@ interface RepartoFormProps {
   fetchEnviosPendientes: (empresaId?: string | null) => Promise<EnvioConDetalles[]>;
   isSubmitting?: boolean;
   setIsSubmitting: (isSubmitting: boolean) => void;
+  // defaultValues prop not typically needed for a create-only form like this
 }
 
 export function RepartoForm({
@@ -64,7 +65,7 @@ export function RepartoForm({
       fecha_reparto: new Date(),
       repartidor_id: undefined,
       empresa_asociada_id: null,
-      notas: '',
+      notas: "", // Initialize optional string
       envio_ids: [],
       estado: 'planificado',
     },
@@ -72,7 +73,7 @@ export function RepartoForm({
 
   const { fields, append, remove } = useFieldArray({
     control: form.control,
-    name: "envio_ids" as any, // Casting because it's an array of strings, not objects
+    name: "envio_ids" as any, 
   });
 
   const selectedEmpresaId = form.watch('empresa_asociada_id');
@@ -83,7 +84,6 @@ export function RepartoForm({
       try {
         const data = await fetchEnviosPendientes(selectedEmpresaId);
         setEnviosDisponibles(data);
-        // Clear selected envios if they are no longer in the available list
         const currentSelected = form.getValues('envio_ids');
         const newAvailableIds = new Set(data.map(e => e.id));
         const newSelected = currentSelected.filter(id => newAvailableIds.has(id));
@@ -129,7 +129,16 @@ export function RepartoForm({
     const result = await onSubmit(formData);
     setIsSubmitting(false);
     if (result.success) {
-      form.reset(); // Reset form on successful submission
+      form.reset({ // Reset form to its initial default values on success
+        fecha_reparto: new Date(),
+        repartidor_id: undefined,
+        empresa_asociada_id: null,
+        notas: "",
+        envio_ids: [],
+        estado: 'planificado',
+      }); 
+      setSearchTerm(""); // Clear search term
+      // Optionally, re-fetch initial envios pendientes if needed, or rely on page navigation
     }
   };
 
@@ -263,3 +272,5 @@ export function RepartoForm({
     </Form>
   );
 }
+
+    

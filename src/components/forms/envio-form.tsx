@@ -32,7 +32,7 @@ import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { Separator } from '../ui/separator';
+// Removed import for Separator as it's not used.
 
 interface EnvioFormProps {
   onSubmit: (data: Envio) => Promise<{ success: boolean; error?: string; data?: Envio }>;
@@ -49,7 +49,7 @@ interface EnvioFormProps {
 
 export function EnvioForm({
   onSubmit,
-  defaultValues,
+  defaultValues: initialDefaultValues,
   clientes,
   empresas,
   tiposPaquete,
@@ -67,33 +67,69 @@ export function EnvioForm({
   const [geocodedDest, setGeocodedDest] = React.useState<GeocodeResult | null>(null);
 
   const [clienteSelectionMode, setClienteSelectionMode] = React.useState<'existing' | 'temporal'>(
-    defaultValues?.remitente_cliente_id ? 'existing' : (defaultValues?.cliente_temporal_nombre ? 'temporal' : 'existing')
+    initialDefaultValues?.remitente_cliente_id ? 'existing' : (initialDefaultValues?.cliente_temporal_nombre ? 'temporal' : 'existing')
   );
 
   const form = useForm<Envio>({
     resolver: zodResolver(EnvioSchema),
-    defaultValues: {
-      estado: 'pendiente_asignacion',
-      remitente_cliente_id: null,
-      cliente_temporal_nombre: null,
-      cliente_temporal_telefono: null,
-      empresa_origen_id: null,
-      empresa_destino_id: null,
-      peso_kg: null,
-      precio: 0,
-      fecha_estimada_entrega: undefined,
-      notas_conductor: null,
-      notas_origen: null,
-      notas_destino: null,
-      latitud_origen: null,
-      longitud_origen: null,
-      latitud_destino: null,
-      longitud_destino: null,
-      tipo_paquete_id: tiposPaquete.length > 0 ? tiposPaquete[0].id : undefined,
-      tipo_servicio_id: tiposServicio.length > 0 ? tiposServicio[0].id : undefined,
-      ...defaultValues,
-      fecha_estimada_entrega: defaultValues?.fecha_estimada_entrega ? new Date(defaultValues.fecha_estimada_entrega) : undefined,
-    },
+    defaultValues: initialDefaultValues
+    ? { // Edit mode
+        ...initialDefaultValues,
+        remitente_cliente_id: initialDefaultValues.remitente_cliente_id ?? null,
+        cliente_temporal_nombre: initialDefaultValues.cliente_temporal_nombre ?? "",
+        cliente_temporal_telefono: initialDefaultValues.cliente_temporal_telefono ?? "",
+        nombre_destinatario: initialDefaultValues.nombre_destinatario ?? "",
+        telefono_destinatario: initialDefaultValues.telefono_destinatario ?? "",
+        direccion_origen: initialDefaultValues.direccion_origen || "",
+        empresa_origen_id: initialDefaultValues.empresa_origen_id ?? null,
+        notas_origen: initialDefaultValues.notas_origen ?? "",
+        direccion_destino: initialDefaultValues.direccion_destino || "",
+        empresa_destino_id: initialDefaultValues.empresa_destino_id ?? null,
+        notas_destino: initialDefaultValues.notas_destino ?? "",
+        tipo_paquete_id: initialDefaultValues.tipo_paquete_id || (tiposPaquete.length > 0 ? tiposPaquete[0].id : undefined),
+        peso_kg: initialDefaultValues.peso_kg ?? null,
+        tipo_servicio_id: initialDefaultValues.tipo_servicio_id || (tiposServicio.length > 0 ? tiposServicio[0].id : undefined),
+        precio: initialDefaultValues.precio ?? 0,
+        estado: initialDefaultValues.estado || 'pendiente_asignacion',
+        fecha_estimada_entrega: initialDefaultValues.fecha_estimada_entrega ? new Date(initialDefaultValues.fecha_estimada_entrega) : undefined,
+        horario_retiro_desde: initialDefaultValues.horario_retiro_desde ?? "",
+        horario_entrega_hasta: initialDefaultValues.horario_entrega_hasta ?? "",
+        repartidor_asignado_id: initialDefaultValues.repartidor_asignado_id ?? null,
+        notas_conductor: initialDefaultValues.notas_conductor ?? "",
+        detalles_adicionales: initialDefaultValues.detalles_adicionales ?? "",
+        latitud_origen: initialDefaultValues.latitud_origen ?? null,
+        longitud_origen: initialDefaultValues.longitud_origen ?? null,
+        latitud_destino: initialDefaultValues.latitud_destino ?? null,
+        longitud_destino: initialDefaultValues.longitud_destino ?? null,
+      }
+    : { // Create mode
+        remitente_cliente_id: null,
+        cliente_temporal_nombre: "",
+        cliente_temporal_telefono: "",
+        nombre_destinatario: "",
+        telefono_destinatario: "",
+        direccion_origen: "",
+        latitud_origen: null,
+        longitud_origen: null,
+        empresa_origen_id: null,
+        notas_origen: "",
+        direccion_destino: "",
+        latitud_destino: null,
+        longitud_destino: null,
+        empresa_destino_id: null,
+        notas_destino: "",
+        tipo_paquete_id: tiposPaquete.length > 0 ? tiposPaquete[0].id : undefined,
+        peso_kg: null,
+        tipo_servicio_id: tiposServicio.length > 0 ? tiposServicio[0].id : undefined,
+        precio: 0,
+        estado: 'pendiente_asignacion',
+        fecha_estimada_entrega: undefined,
+        horario_retiro_desde: "",
+        horario_entrega_hasta: "",
+        repartidor_asignado_id: null,
+        notas_conductor: "",
+        detalles_adicionales: "",
+      },
   });
 
   React.useEffect(() => {
@@ -110,31 +146,93 @@ export function EnvioForm({
   }, [toast]);
 
   React.useEffect(() => {
-    if (defaultValues) {
-      const currentClienteMode = defaultValues.remitente_cliente_id ? 'existing' : (defaultValues.cliente_temporal_nombre ? 'temporal' : 'existing');
+    if (initialDefaultValues) {
+      const currentClienteMode = initialDefaultValues.remitente_cliente_id ? 'existing' : (initialDefaultValues.cliente_temporal_nombre ? 'temporal' : 'existing');
       setClienteSelectionMode(currentClienteMode);
       
       form.reset({
-        ...defaultValues,
-        fecha_estimada_entrega: defaultValues.fecha_estimada_entrega ? new Date(defaultValues.fecha_estimada_entrega) : undefined,
+        ...initialDefaultValues,
+        remitente_cliente_id: initialDefaultValues.remitente_cliente_id ?? null,
+        cliente_temporal_nombre: initialDefaultValues.cliente_temporal_nombre ?? "",
+        cliente_temporal_telefono: initialDefaultValues.cliente_temporal_telefono ?? "",
+        nombre_destinatario: initialDefaultValues.nombre_destinatario ?? "",
+        telefono_destinatario: initialDefaultValues.telefono_destinatario ?? "",
+        direccion_origen: initialDefaultValues.direccion_origen || "",
+        empresa_origen_id: initialDefaultValues.empresa_origen_id ?? null,
+        notas_origen: initialDefaultValues.notas_origen ?? "",
+        direccion_destino: initialDefaultValues.direccion_destino || "",
+        empresa_destino_id: initialDefaultValues.empresa_destino_id ?? null,
+        notas_destino: initialDefaultValues.notas_destino ?? "",
+        tipo_paquete_id: initialDefaultValues.tipo_paquete_id || (tiposPaquete.length > 0 ? tiposPaquete[0].id : undefined),
+        peso_kg: initialDefaultValues.peso_kg ?? null,
+        tipo_servicio_id: initialDefaultValues.tipo_servicio_id || (tiposServicio.length > 0 ? tiposServicio[0].id : undefined),
+        precio: initialDefaultValues.precio ?? 0,
+        estado: initialDefaultValues.estado || 'pendiente_asignacion',
+        fecha_estimada_entrega: initialDefaultValues.fecha_estimada_entrega ? new Date(initialDefaultValues.fecha_estimada_entrega) : undefined,
+        horario_retiro_desde: initialDefaultValues.horario_retiro_desde ?? "",
+        horario_entrega_hasta: initialDefaultValues.horario_entrega_hasta ?? "",
+        repartidor_asignado_id: initialDefaultValues.repartidor_asignado_id ?? null,
+        notas_conductor: initialDefaultValues.notas_conductor ?? "",
+        detalles_adicionales: initialDefaultValues.detalles_adicionales ?? "",
+        latitud_origen: initialDefaultValues.latitud_origen ?? null,
+        longitud_origen: initialDefaultValues.longitud_origen ?? null,
+        latitud_destino: initialDefaultValues.latitud_destino ?? null,
+        longitud_destino: initialDefaultValues.longitud_destino ?? null,
       });
-      if (defaultValues.latitud_origen && defaultValues.longitud_origen && defaultValues.direccion_origen) {
-        setGeocodedOrigin({ lat: defaultValues.latitud_origen, lng: defaultValues.longitud_origen, formattedAddress: defaultValues.direccion_origen });
+
+      if (initialDefaultValues.latitud_origen && initialDefaultValues.longitud_origen && initialDefaultValues.direccion_origen) {
+        setGeocodedOrigin({ lat: initialDefaultValues.latitud_origen, lng: initialDefaultValues.longitud_origen, formattedAddress: initialDefaultValues.direccion_origen });
+      } else {
+        setGeocodedOrigin(null);
       }
-      if (defaultValues.latitud_destino && defaultValues.longitud_destino && defaultValues.direccion_destino) {
-        setGeocodedDest({ lat: defaultValues.latitud_destino, lng: defaultValues.longitud_destino, formattedAddress: defaultValues.direccion_destino });
+      if (initialDefaultValues.latitud_destino && initialDefaultValues.longitud_destino && initialDefaultValues.direccion_destino) {
+        setGeocodedDest({ lat: initialDefaultValues.latitud_destino, lng: initialDefaultValues.longitud_destino, formattedAddress: initialDefaultValues.direccion_destino });
+      } else {
+        setGeocodedDest(null);
       }
+    } else { // For create mode, ensure form is reset to its initial clean state
+        form.reset({
+            remitente_cliente_id: null,
+            cliente_temporal_nombre: "",
+            cliente_temporal_telefono: "",
+            nombre_destinatario: "",
+            telefono_destinatario: "",
+            direccion_origen: "",
+            latitud_origen: null,
+            longitud_origen: null,
+            empresa_origen_id: null,
+            notas_origen: "",
+            direccion_destino: "",
+            latitud_destino: null,
+            longitud_destino: null,
+            empresa_destino_id: null,
+            notas_destino: "",
+            tipo_paquete_id: tiposPaquete.length > 0 ? tiposPaquete[0].id : undefined,
+            peso_kg: null,
+            tipo_servicio_id: tiposServicio.length > 0 ? tiposServicio[0].id : undefined,
+            precio: 0,
+            estado: 'pendiente_asignacion',
+            fecha_estimada_entrega: undefined,
+            horario_retiro_desde: "",
+            horario_entrega_hasta: "",
+            repartidor_asignado_id: null,
+            notas_conductor: "",
+            detalles_adicionales: "",
+        });
+        setGeocodedOrigin(null);
+        setGeocodedDest(null);
+        setClienteSelectionMode('existing'); // Default to existing client selection mode
     }
-  }, [defaultValues, form]);
+  }, [initialDefaultValues, form, tiposPaquete, tiposServicio]);
   
   React.useEffect(() => {
     if (clienteSelectionMode === 'existing') {
-      form.setValue('cliente_temporal_nombre', null);
-      form.setValue('cliente_temporal_telefono', null);
+      form.setValue('cliente_temporal_nombre', ""); // Use "" instead of null
+      form.setValue('cliente_temporal_telefono', ""); // Use "" instead of null
     } else {
       form.setValue('remitente_cliente_id', null);
     }
-    form.trigger(['remitente_cliente_id', 'cliente_temporal_nombre', 'cliente_temporal_telefono']);
+    // No need to trigger validation here, zod refine will handle it on submit
   }, [clienteSelectionMode, form]);
 
 
@@ -182,16 +280,30 @@ export function EnvioForm({
 
   const processSubmit = async (formData: Envio) => {
     setIsSubmitting(true);
-    const result = await onSubmit(formData);
+    // Ensure optional string fields that are empty in the form are sent as null if schema expects nullable
+    const dataToSubmit: Envio = {
+        ...formData,
+        cliente_temporal_nombre: formData.cliente_temporal_nombre || null,
+        cliente_temporal_telefono: formData.cliente_temporal_telefono || null,
+        empresa_origen_id: formData.empresa_origen_id || null,
+        notas_origen: formData.notas_origen || null,
+        empresa_destino_id: formData.empresa_destino_id || null,
+        notas_destino: formData.notas_destino || null,
+        peso_kg: formData.peso_kg === 0 ? null : formData.peso_kg, // Assuming 0 means not set for weight
+        horario_retiro_desde: formData.horario_retiro_desde || null,
+        horario_entrega_hasta: formData.horario_entrega_hasta || null,
+        repartidor_asignado_id: formData.repartidor_asignado_id || null,
+        notas_conductor: formData.notas_conductor || null,
+        detalles_adicionales: formData.detalles_adicionales || null,
+    };
+    await onSubmit(dataToSubmit);
     setIsSubmitting(false);
-    // Toast messages are handled in the parent page component based on result
   };
 
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(processSubmit)} className="space-y-8">
         
-        {/* Client Section */}
         <Card>
           <CardHeader>
             <CardTitle>Información del Cliente</CardTitle>
@@ -214,13 +326,14 @@ export function EnvioForm({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Cliente Existente</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value || undefined} defaultValue={field.value || undefined}>
+                    <Select onValueChange={field.onChange} value={field.value || ""} defaultValue={field.value || ""}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Seleccione un cliente" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
+                        <SelectItem value="">Ninguno</SelectItem>
                         {clientes.map((cliente) => (
                           <SelectItem key={cliente.id} value={cliente.id!}>
                             {cliente.apellido}, {cliente.nombre}
@@ -263,7 +376,6 @@ export function EnvioForm({
           </CardContent>
         </Card>
 
-        {/* Origin Section */}
         <Card>
           <CardHeader><CardTitle className="flex items-center gap-2"><MapPin className="text-blue-500"/> Origen del Envío</CardTitle></CardHeader>
           <CardContent className="space-y-4">
@@ -295,7 +407,7 @@ export function EnvioForm({
               name="empresa_origen_id"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Empresa de Origen (Opcional)</FormLabel>
+                  <FormLabel className="flex items-center gap-1"><Building size={16}/>Empresa de Origen (Opcional)</FormLabel>
                   <Select onValueChange={field.onChange} value={field.value || ""} defaultValue={field.value || ""}>
                     <FormControl><SelectTrigger><SelectValue placeholder="Seleccione si el origen es una empresa" /></SelectTrigger></FormControl>
                     <SelectContent>
@@ -321,7 +433,6 @@ export function EnvioForm({
           </CardContent>
         </Card>
 
-        {/* Destination Section */}
         <Card>
           <CardHeader><CardTitle className="flex items-center gap-2"><MapPin className="text-red-500"/> Destino del Envío</CardTitle></CardHeader>
           <CardContent className="space-y-4">
@@ -353,7 +464,7 @@ export function EnvioForm({
               name="empresa_destino_id"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Empresa de Destino (Opcional)</FormLabel>
+                  <FormLabel className="flex items-center gap-1"><Building size={16}/>Empresa de Destino (Opcional)</FormLabel>
                   <Select onValueChange={field.onChange} value={field.value || ""} defaultValue={field.value || ""}>
                     <FormControl><SelectTrigger><SelectValue placeholder="Seleccione si el destino es una empresa" /></SelectTrigger></FormControl>
                     <SelectContent>
@@ -405,7 +516,6 @@ export function EnvioForm({
           </CardContent>
         </Card>
 
-        {/* Package & Service Section */}
         <Card>
           <CardHeader><CardTitle>Detalles del Paquete y Servicio</CardTitle></CardHeader>
           <CardContent className="space-y-4">
@@ -516,7 +626,7 @@ export function EnvioForm({
                         mode="single"
                         selected={field.value ? new Date(field.value) : undefined}
                         onSelect={(date) => field.onChange(date)}
-                        disabled={(date) => date < new Date(new Date().setDate(new Date().getDate() -1)) } // Disable past dates
+                        disabled={(date) => date < new Date(new Date().setDate(new Date().getDate() -1)) } 
                         initialFocus
                         locale={es}
                       />
