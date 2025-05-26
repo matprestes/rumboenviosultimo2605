@@ -153,25 +153,6 @@ export default function DashboardPage() {
           </Card>
         </div>
       </section>
-
-
-      <section>
-        <h2 className="text-2xl font-semibold tracking-tight text-foreground mb-4">Próximas Funcionalidades</h2>
-        <div className="grid md:grid-cols-2 gap-6">
-            <ul className="list-disc list-inside space-y-1 text-muted-foreground bg-card p-4 rounded-lg shadow-sm">
-                <li><Sparkles size={16} className="inline mr-1 text-primary"/>Integración de IA para optimización de rutas.</li>
-                <li><Sparkles size={16} className="inline mr-1 text-primary"/>Notificaciones y seguimiento en tiempo real para clientes.</li>
-                <li><Sparkles size={16} className="inline mr-1 text-primary"/>Panel de configuración de tarifas y servicios avanzado.</li>
-                <li><Sparkles size={16} className="inline mr-1 text-primary"/>Dashboard con estadísticas y KPIs de envíos.</li>
-            </ul>
-            <div className="p-6 border border-dashed border-border rounded-lg bg-card text-center flex flex-col items-center justify-center shadow-sm">
-                <img src="https://placehold.co/600x300.png" alt="Mapa ilustrativo de Mar del Plata" data-ai-hint="map MarDelPlata" className="mx-auto mb-4 rounded opacity-70 shadow-sm max-w-xs sm:max-w-sm md:max-w-md" />
-                <p className="text-muted-foreground text-sm">
-                Imagina tus envíos visualizados y optimizados sobre el mapa de Mar del Plata.
-                </p>
-            </div>
-        </div>
-      </section>
     </div>
   );
 }

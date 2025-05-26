@@ -5,16 +5,6 @@ import * as React from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogDescription,
-  DialogFooter,
-  DialogClose
-} from "@/components/ui/dialog";
-import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -23,23 +13,25 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  // AlertDialogTrigger, // Removed
 } from "@/components/ui/alert-dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Building2, PlusCircle, Loader2, Edit, Trash2, MapPinIcon } from "lucide-react";
-import { EmpresaForm } from "@/components/forms/empresa-form";
+// Import EmpresaForm if needed for an edit page in the future, but not for create dialog
+// import { EmpresaForm } from "@/components/forms/empresa-form";
 import type { Empresa } from '@/lib/schemas';
 import { supabase } from '@/lib/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+
 
 export default function EmpresasPage() {
   const { toast } = useToast();
+  const router = useRouter();
   const [empresas, setEmpresas] = React.useState<Empresa[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
-  const [isDialogOpen, setIsDialogOpen] = React.useState(false);
-  const [editingEmpresa, setEditingEmpresa] = React.useState<Empresa | null>(null);
-  const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [isDeleting, setIsDeleting] = React.useState(false);
   const [empresaToDelete, setEmpresaToDelete] = React.useState<Empresa | null>(null);
 
   const fetchEmpresas = React.useCallback(async () => {
@@ -67,82 +59,15 @@ export default function EmpresasPage() {
     fetchEmpresas();
   }, [fetchEmpresas]);
 
-  const handleFormSubmit = async (formData: Empresa) => {
-    setIsSubmitting(true);
-    try {
-      let error;
-      let successMessage;
-
-      if (editingEmpresa && editingEmpresa.id) {
-        // Update existing empresa
-        const { error: updateError } = await supabase
-          .from('empresas')
-          .update({
-            nombre: formData.nombre,
-            direccion: formData.direccion,
-            latitud: formData.latitud,
-            longitud: formData.longitud,
-            telefono: formData.telefono,
-            email: formData.email,
-            notas: formData.notas,
-            estado: formData.estado,
-          })
-          .eq('id', editingEmpresa.id);
-        error = updateError;
-        successMessage = `La empresa "${formData.nombre}" ha sido actualizada exitosamente.`;
-      } else {
-        // Create new empresa
-        const { error: insertError } = await supabase.from('empresas').insert([
-          {
-            nombre: formData.nombre,
-            direccion: formData.direccion,
-            latitud: formData.latitud,
-            longitud: formData.longitud,
-            telefono: formData.telefono,
-            email: formData.email,
-            notas: formData.notas,
-            estado: formData.estado,
-          }
-        ]);
-        error = insertError;
-        successMessage = `La empresa "${formData.nombre}" ha sido creada exitosamente.`;
-      }
-
-      if (error) throw error;
-
-      toast({
-        title: editingEmpresa ? "Empresa Actualizada" : "Empresa Creada",
-        description: successMessage,
-        variant: "default",
-      });
-      setIsDialogOpen(false);
-      setEditingEmpresa(null);
-      fetchEmpresas(); // Refresh the list
-    } catch (error: any) {
-      console.error("Error saving empresa:", error);
-      toast({
-        title: `Error al ${editingEmpresa ? 'Actualizar' : 'Crear'} Empresa`,
-        description: error.message || "Ocurrió un error inesperado.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
   const handleEdit = (empresa: Empresa) => {
-    setEditingEmpresa(empresa);
-    setIsDialogOpen(true);
-  };
-
-  const openNewEmpresaDialog = () => {
-    setEditingEmpresa(null); // Clear editing state for new empresa
-    setIsDialogOpen(true);
+    // Placeholder for future navigation to an edit page
+    // router.push(`/empresas/${empresa.id}/editar`);
+    toast({ title: "Info", description: `La edición de "${empresa.nombre}" se implementará en una página dedicada.`});
   };
 
   const handleDeleteConfirm = async () => {
     if (!empresaToDelete || !empresaToDelete.id) return;
-    setIsSubmitting(true);
+    setIsDeleting(true);
     try {
       const { error } = await supabase
         .from('empresas')
@@ -156,7 +81,7 @@ export default function EmpresasPage() {
         description: `La empresa "${empresaToDelete.nombre}" ha sido eliminada.`,
       });
       setEmpresaToDelete(null);
-      fetchEmpresas(); // Refresh list
+      fetchEmpresas(); 
     } catch (error: any) {
       toast({
         title: "Error al Eliminar Empresa",
@@ -164,7 +89,7 @@ export default function EmpresasPage() {
         variant: "destructive",
       });
     } finally {
-      setIsSubmitting(false);
+      setIsDeleting(false);
     }
   };
 
@@ -180,40 +105,14 @@ export default function EmpresasPage() {
             Administra las empresas asociadas a Rumbos Envíos.
           </p>
         </div>
-        <Button onClick={openNewEmpresaDialog}>
-          <PlusCircle className="mr-2 h-4 w-4" />
-          Nueva Empresa
+        <Button asChild>
+          <Link href="/empresas/nuevo">
+            <PlusCircle className="mr-2 h-4 w-4" />
+            Nueva Empresa
+          </Link>
         </Button>
       </header>
       
-      <Dialog open={isDialogOpen} onOpenChange={(isOpen) => {
-        setIsDialogOpen(isOpen);
-        if (!isOpen) setEditingEmpresa(null); // Reset editing state when dialog closes
-      }}>
-        <DialogContent className="sm:max-w-[625px]">
-          <DialogHeader>
-            <DialogTitle>{editingEmpresa ? "Editar Empresa" : "Crear Nueva Empresa"}</DialogTitle>
-            <DialogDescription>
-              {editingEmpresa ? "Modifique los detalles de la empresa." : "Complete los detalles de la nueva empresa."} Haga clic en guardar cuando haya terminado.
-            </DialogDescription>
-          </DialogHeader>
-          <EmpresaForm 
-            key={editingEmpresa ? editingEmpresa.id : 'new'} // Ensures form resets with new defaultValues
-            onSubmit={handleFormSubmit}
-            defaultValues={editingEmpresa || undefined}
-            isSubmitting={isSubmitting} 
-            submitButtonText={editingEmpresa ? "Actualizar Empresa" : "Guardar Empresa"}
-          />
-           <DialogFooter>
-              <DialogClose asChild>
-                  <Button variant="outline" disabled={isSubmitting}>
-                      Cancelar
-                  </Button>
-              </DialogClose>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       <AlertDialog open={!!empresaToDelete} onOpenChange={(isOpen) => !isOpen && setEmpresaToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -224,20 +123,20 @@ export default function EmpresasPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isSubmitting}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteConfirm} disabled={isSubmitting} className="bg-destructive hover:bg-destructive/90">
-              {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteConfirm} disabled={isDeleting} className="bg-destructive hover:bg-destructive/90">
+              {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Eliminar
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      <Card>
+      <Card className="rounded-2xl shadow-sm">
         <CardHeader>
           <CardTitle>Listado de Empresas</CardTitle>
           <CardDescription>
-            Aquí podrás ver, crear, editar y eliminar empresas.
+            Aquí podrás ver y eliminar empresas. La edición se hará en una página dedicada.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -278,11 +177,11 @@ export default function EmpresasPage() {
                     <TableCell>{empresa.email || '-'}</TableCell>
                     <TableCell>
                       <Badge variant={empresa.estado === 'activo' ? 'default' : 'secondary'} className={empresa.estado === 'activo' ? 'bg-green-500 hover:bg-green-600' : 'bg-red-500 hover:bg-red-600'}>
-                        {empresa.estado.charAt(0).toUpperCase() + empresa.estado.slice(1)}
+                        {empresa.estado ? empresa.estado.charAt(0).toUpperCase() + empresa.estado.slice(1) : 'N/A'}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="icon" onClick={() => handleEdit(empresa)} title="Editar">
+                      <Button variant="ghost" size="icon" onClick={() => handleEdit(empresa)} title="Editar (Próximamente)">
                         <Edit className="h-4 w-4" />
                       </Button>
                       <Button variant="ghost" size="icon" onClick={() => setEmpresaToDelete(empresa)} title="Eliminar">
