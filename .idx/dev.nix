@@ -8,6 +8,7 @@
     pkgs.nodejs_20
     pkgs.zulu
     pkgs.pnpm_10
+    pkgs.python313
   ];
   # Sets environment variables in the workspace
   env = {};
