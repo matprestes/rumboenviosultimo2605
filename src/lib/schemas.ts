@@ -2,7 +2,7 @@
 import { z } from 'zod';
 
 // Enum for estado
-export const EstadoEnum = z.enum(["activo", "inactivo", "pendiente"], { // Added pendiente as a general state option
+export const EstadoEnum = z.enum(["activo", "inactivo", "pendiente"], {
   errorMap: () => ({ message: "Seleccione un estado válido." }),
 });
 export type Estado = z.infer<typeof EstadoEnum>;
@@ -22,7 +22,7 @@ export type EstadoEnvio = z.infer<typeof EstadoEnvioEnum>;
 
 // --- Empresa Schemas ---
 export const EmpresaSchema = z.object({
-  id: z.string().uuid().optional(), // Optional for creation, present for update/display
+  id: z.string().uuid().optional(),
   nombre: z.string().min(2, "El nombre de la empresa es requerido y debe tener al menos 2 caracteres."),
   direccion: z.string().min(5, "La dirección es requerida y debe tener al menos 5 caracteres."),
   latitud: z.number().optional().nullable(),
@@ -31,8 +31,8 @@ export const EmpresaSchema = z.object({
   email: z.string().email("Ingrese un email válido.").optional().nullable(),
   notas: z.string().optional().nullable(),
   estado: EstadoEnum,
-  created_at: z.string().datetime().optional(), // Supabase provides this
-  updated_at: z.string().datetime().optional(), // Supabase provides this
+  created_at: z.string().datetime().optional(),
+  updated_at: z.string().datetime().optional(),
 });
 export type Empresa = z.infer<typeof EmpresaSchema>;
 export type EmpresaFormValues = Omit<Empresa, 'id' | 'created_at' | 'updated_at'>;
@@ -52,8 +52,7 @@ export const ClienteSchema = z.object({
   estado: EstadoEnum,
   created_at: z.string().datetime().optional(),
   updated_at: z.string().datetime().optional(),
-  // This field is not directly in DB, but used for UI representation
-  empresas: z.object({ id: z.string(), nombre: z.string() }).optional().nullable(),
+  empresas: z.object({ id: z.string(), nombre: z.string() }).optional().nullable(), // For UI join
 });
 export type Cliente = z.infer<typeof ClienteSchema>;
 export type ClienteFormValues = Omit<Cliente, 'id' | 'created_at' | 'updated_at' | 'empresas'>;
@@ -70,40 +69,115 @@ export const RepartidorSchema = z.object({
 export type Repartidor = z.infer<typeof RepartidorSchema>;
 export type RepartidorFormValues = Omit<Repartidor, 'id' | 'created_at' | 'updated_at'>;
 
+// --- TipoPaquete Schemas ---
+export const TipoPaqueteSchema = z.object({
+  id: z.string().uuid().optional(),
+  nombre: z.string().min(3, "El nombre del tipo de paquete es requerido."),
+  descripcion: z.string().optional().nullable(),
+  created_at: z.string().datetime().optional(),
+  updated_at: z.string().datetime().optional(),
+});
+export type TipoPaquete = z.infer<typeof TipoPaqueteSchema>;
+
+// --- TipoServicio Schemas ---
+export const TipoServicioSchema = z.object({
+  id: z.string().uuid().optional(),
+  nombre: z.string().min(3, "El nombre del tipo de servicio es requerido."),
+  descripcion: z.string().optional().nullable(),
+  precio_base: z.number().min(0, "El precio base no puede ser negativo.").optional().nullable(),
+  created_at: z.string().datetime().optional(),
+  updated_at: z.string().datetime().optional(),
+});
+export type TipoServicio = z.infer<typeof TipoServicioSchema>;
+
 
 // --- Envío Schemas ---
-export const EnvioSchema = z.object({
+export const EnvioBaseSchema = z.object({
   id: z.string().uuid().optional(),
+  // Client details - one of these must be chosen
   cliente_id: z.string().uuid().nullable().optional(),
   cliente_temporal_nombre: z.string().nullable().optional(),
   cliente_temporal_telefono: z.string().nullable().optional(),
+  
+  // Origin details
   direccion_origen: z.string().min(5, "La dirección de origen es requerida."),
   latitud_origen: z.number().nullable().optional(),
   longitud_origen: z.number().nullable().optional(),
-  empresa_origen_id: z.string().uuid().nullable().optional(),
+  empresa_origen_id: z.string().uuid().nullable().optional(), // Can be an associated company
+  notas_origen: z.string().nullable().optional(),
+
+
+  // Destination details
   direccion_destino: z.string().min(5, "La dirección de destino es requerida."),
   latitud_destino: z.number().nullable().optional(),
   longitud_destino: z.number().nullable().optional(),
-  empresa_destino_id: z.string().uuid().nullable().optional(),
-  tipo_paquete_id: z.string().uuid().nullable().optional(), // Assuming types will be UUIDs
-  peso_kg: z.number().positive("El peso debe ser un número positivo.").nullable().optional(),
-  tipo_servicio_id: z.string().uuid(), // Assuming types will be UUIDs
-  precio: z.number().min(0, "El precio no puede ser negativo."),
+  empresa_destino_id: z.string().uuid().nullable().optional(), // Can be an associated company
+  notas_destino: z.string().nullable().optional(),
+
+  // Package and Service details
+  tipo_paquete_id: z.string().uuid({ message: "Debe seleccionar un tipo de paquete."}),
+  peso_kg: z.preprocess(
+    (val) => (val === "" || val === null || val === undefined ? null : parseFloat(String(val))),
+    z.number().positive("El peso debe ser un número positivo.").nullable().optional()
+  ),
+  tipo_servicio_id: z.string().uuid({ message: "Debe seleccionar un tipo de servicio."}),
+  
+  // Pricing and Status
+  precio: z.preprocess(
+    (val) => (val === "" || val === null || val === undefined ? 0 : parseFloat(String(val))), // Default to 0 if empty
+    z.number().min(0, "El precio no puede ser negativo.")
+  ),
   estado: EstadoEnvioEnum.default('pendiente_asignacion'),
-  fecha_estimada_entrega: z.string().datetime().nullable().optional(),
+  fecha_estimada_entrega: z.date().nullable().optional(),
+  
+  // Assignment and Notes
   repartidor_asignado_id: z.string().uuid().nullable().optional(),
   notas_conductor: z.string().nullable().optional(),
+  
+  // Timestamps and User
   created_at: z.string().datetime().optional(),
   updated_at: z.string().datetime().optional(),
-  user_id: z.string().uuid().nullable().optional(), // Assuming user_id from auth
+  user_id: z.string().uuid().nullable().optional(),
 });
+
+export const EnvioSchema = EnvioBaseSchema.superRefine((data, ctx) => {
+  if (!data.cliente_id && !data.cliente_temporal_nombre) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Debe seleccionar un cliente existente o ingresar un nombre para cliente temporal.",
+      path: ["cliente_id"], 
+    });
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Debe seleccionar un cliente existente o ingresar un nombre para cliente temporal.",
+      path: ["cliente_temporal_nombre"],
+    });
+  }
+  if (data.cliente_temporal_nombre && !data.cliente_temporal_telefono) {
+     ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Si ingresa un cliente temporal, el teléfono es requerido.",
+      path: ["cliente_temporal_telefono"],
+    });
+  }
+});
+
 export type Envio = z.infer<typeof EnvioSchema>;
+// For UI representation, we might join related data
+export interface EnvioConDetalles extends Envio {
+  clientes?: Cliente | null;
+  empresas_origen?: Empresa | null;
+  empresas_destino?: Empresa | null;
+  tipos_paquete?: TipoPaquete | null;
+  tipos_servicio?: TipoServicio | null;
+  repartidores?: Repartidor | null;
+}
 
 
 // --- Reparto Schemas ---
 export const RepartoSchema = z.object({
   id: z.string().uuid().optional(),
-  fecha_reparto: z.string().refine((val) => !isNaN(Date.parse(val)), { message: "Fecha de reparto inválida."}), // Store as ISO string, validate if parseable
+  fecha_reparto: z.date({ required_error: "La fecha de reparto es requerida."}),
   repartidor_id: z.string().uuid("Debe seleccionar un repartidor."),
   empresa_asociada_id: z.string().uuid().nullable().optional(),
   estado: EstadoEnum.default('pendiente'),
@@ -122,8 +196,8 @@ export const ParadaRepartoSchema = z.object({
   envio_id: z.string().uuid(),
   orden_visita: z.number().int().positive().nullable().optional(),
   estado_parada: EstadoEnvioEnum.default('asignado'),
-  hora_estimada_llegada: z.string().nullable().optional(), // Consider time format
-  hora_real_llegada: z.string().nullable().optional(),     // Consider time format
+  hora_estimada_llegada: z.string().nullable().optional(),
+  hora_real_llegada: z.string().nullable().optional(),
   notas_parada: z.string().nullable().optional(),
   created_at: z.string().datetime().optional(),
   updated_at: z.string().datetime().optional(),
@@ -156,3 +230,5 @@ export const ShipmentRequestFormSchema = z.object({
 });
 
 export type ShipmentRequestFormValues = z.infer<typeof ShipmentRequestFormSchema>;
+
+    
