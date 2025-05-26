@@ -11,17 +11,20 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Package, PlusCircle, Loader2, Edit, Trash2, Search, Calendar as CalendarIcon } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+  // AlertDialogTrigger // Removed
 } from "@/components/ui/alert-dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { getEnviosAction, deleteEnvioAction } from '@/actions/envio-actions';
 import type { EnvioConDetalles, EstadoEnvio } from '@/lib/schemas';
+import { EstadoEnvioEnum } from '@/lib/schemas'; // Import enum for values
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
+import { cn } from '@/lib/utils';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -168,7 +171,7 @@ export default function EnviosPage() {
               <SelectTrigger><SelectValue placeholder="Filtrar por estado..." /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="">Todos los Estados</SelectItem>
-                {(Object.keys(EstadoEnvioEnum.Values) as EstadoEnvio[]).map(estado => (
+                {(Object.values(EstadoEnvioEnum.Values) as EstadoEnvio[]).map(estado => (
                   <SelectItem key={estado} value={estado}>{getEstadoDisplayName(estado)}</SelectItem>
                 ))}
               </SelectContent>
@@ -222,7 +225,7 @@ export default function EnviosPage() {
                     <TableRow key={envio.id}>
                       <TableCell className="font-mono text-xs">{envio.id?.substring(0, 8)}...</TableCell>
                       <TableCell>
-                        {envio.cliente_id ? `${envio.clientes?.apellido}, ${envio.clientes?.nombre}` : (envio.cliente_temporal_nombre || 'N/A')}
+                        {envio.remitente_cliente_id ? `${envio.clientes?.apellido}, ${envio.clientes?.nombre}` : (envio.cliente_temporal_nombre || 'N/A')}
                       </TableCell>
                       <TableCell>{envio.direccion_origen}</TableCell>
                       <TableCell>{envio.direccion_destino}</TableCell>
@@ -245,11 +248,9 @@ export default function EnviosPage() {
                         <Button variant="ghost" size="icon" asChild title="Editar">
                           <Link href={`/envios/${envio.id}/editar`}><Edit className="h-4 w-4" /></Link>
                         </Button>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="icon" onClick={() => setEnvioToDelete(envio)} title="Eliminar">
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </AlertDialogTrigger>
+                        <Button variant="ghost" size="icon" onClick={() => setEnvioToDelete(envio)} title="Eliminar">
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -288,5 +289,3 @@ export default function EnviosPage() {
     </div>
   );
 }
-
-    

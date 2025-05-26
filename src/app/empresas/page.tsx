@@ -23,7 +23,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
+  // AlertDialogTrigger, // Removed
 } from "@/components/ui/alert-dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Building2, PlusCircle, Loader2, Edit, Trash2, MapPinIcon } from "lucide-react";
@@ -285,11 +285,9 @@ export default function EmpresasPage() {
                       <Button variant="ghost" size="icon" onClick={() => handleEdit(empresa)} title="Editar">
                         <Edit className="h-4 w-4" />
                       </Button>
-                      <AlertDialogTrigger asChild>
-                        <Button variant="ghost" size="icon" onClick={() => setEmpresaToDelete(empresa)} title="Eliminar">
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </AlertDialogTrigger>
+                      <Button variant="ghost" size="icon" onClick={() => setEmpresaToDelete(empresa)} title="Eliminar">
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}

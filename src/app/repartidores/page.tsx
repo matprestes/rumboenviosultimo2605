@@ -23,7 +23,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
+  // AlertDialogTrigger, // Removed
 } from "@/components/ui/alert-dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Truck, PlusCircle, Loader2, Edit, Trash2 } from "lucide-react";
@@ -260,11 +260,9 @@ export default function RepartidoresPage() {
                       <Button variant="ghost" size="icon" onClick={() => handleEdit(repartidor)} title="Editar">
                         <Edit className="h-4 w-4" />
                       </Button>
-                      <AlertDialogTrigger asChild>
-                        <Button variant="ghost" size="icon" onClick={() => setRepartidorToDelete(repartidor)} title="Eliminar">
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </AlertDialogTrigger>
+                      <Button variant="ghost" size="icon" onClick={() => setRepartidorToDelete(repartidor)} title="Eliminar">
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
