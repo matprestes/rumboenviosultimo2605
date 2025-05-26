@@ -29,10 +29,11 @@ const loaderOptions: LoaderOptions = {
 };
 
 let googleMapsApiPromise: Promise<typeof google> | null = null;
-let loaderInstance: Loader | null = null; // Keep a single instance of the Loader
+let loaderInstance: Loader | null = null;
 
 function getLoaderInstance(): Loader {
   if (!API_KEY) {
+    // This case should ideally be caught before calling getGoogleMapsApi if !API_KEY
     throw new Error('Google Maps API key is not configured for Loader instantiation.');
   }
   if (!loaderInstance) {
@@ -43,27 +44,27 @@ function getLoaderInstance(): Loader {
 
 export async function getGoogleMapsApi(): Promise<typeof google> {
   if (typeof window === 'undefined') {
-    return Promise.reject(new Error('Google Maps API cannot be loaded on the server. Call from client-side component.'));
+    // This function should not be called server-side.
+    console.warn('getGoogleMapsApi called in a non-browser environment.');
+    return Promise.reject(new Error('Google Maps API cannot be loaded on the server.'));
   }
   if (!API_KEY) {
+    // Logged by the warning above, but good to reject explicitly.
     return Promise.reject(new Error('Google Maps API key is not configured.'));
   }
 
   if (!googleMapsApiPromise) {
-    // Ensures Loader is instantiated only once and load is called only once on that instance.
     const loader = getLoaderInstance();
     googleMapsApiPromise = loader.load().catch(err => {
       console.error("Failed to load Google Maps API via Loader in service:", err);
       googleMapsApiPromise = null; // Reset promise on failure to allow retry if applicable
-      // Check if the error message from the loader or a related global error indicates ApiNotActivatedMapError
-      // This is a heuristic as the loader itself might not pass the exact Google error object directly.
-      // The browser console will show the "ApiNotActivatedMapError" directly from Google's script.
-      let userFriendlyMessage = 'Failed to load Google Maps API. Please check the browser console for details from Google.';
+      
+      let userFriendlyMessage = 'Failed to initialize Google Maps. ';
       if (err && typeof err.message === 'string' && err.message.toLowerCase().includes('network error')) {
-        userFriendlyMessage = 'Network error while trying to load Google Maps API. Please check your internet connection.';
+        userFriendlyMessage += 'A network error occurred. Please check your internet connection.';
       } else {
-        // Generic advice if API loading failed, which can be due to ApiNotActivatedMapError
-         userFriendlyMessage = 'Failed to initialize Google Maps. Please ensure the API key is correct, billing is enabled, and the "Maps JavaScript API" is activated in your Google Cloud Console. Check browser console for more specific errors from Google.';
+        // This is a common point of failure. Guide the user.
+        userFriendlyMessage += 'Common issues include: the "Maps JavaScript API" not being activated in your Google Cloud Console, billing not being enabled for your project, or an incorrect/restricted API key. Please check your Google Cloud Console settings. The browser console might show a specific error like "ApiNotActivatedMapError", "RefererNotAllowedMapError", or other API-related messages from Google.';
       }
       throw new Error(userFriendlyMessage);
     });
@@ -85,26 +86,31 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult | n
     return null;
   }
    if (!API_KEY) {
+    // This case is handled by getGoogleMapsApi, but double-check.
     console.error('Geocoding skipped: Google Maps API key is missing.');
-    return null;
+    // It's better to let getGoogleMapsApi throw the error so consuming components handle it.
+    await getGoogleMapsApi(); // This will throw if API_KEY is missing.
+    return null; // Should not be reached if API_KEY is missing.
   }
 
   try {
-    const google = await getGoogleMapsApi(); // Ensures API is loaded before trying to use it
+    const google = await getGoogleMapsApi();
     if (!google || !google.maps || !google.maps.Geocoder) {
+        // This should ideally not happen if getGoogleMapsApi resolved successfully.
         console.error('Google Maps Geocoder API is not available after load attempt.');
-        return null;
+        throw new Error('Google Maps Geocoder is unavailable. The API might not have loaded correctly.');
     }
     const geocoder = new google.maps.Geocoder();
 
     const request: google.maps.GeocoderRequest = {
       address: address,
       componentRestrictions: {
-        country: 'AR',
+        country: 'AR', // Restrict to Argentina
       },
+      // Bias towards Mar del Plata
       bounds: new google.maps.LatLngBounds(
-        { lat: MAR_DEL_PLATA_BOUNDS.south, lng: MAR_DEL_PLATA_BOUNDS.west },
-        { lat: MAR_DEL_PLATA_BOUNDS.north, lng: MAR_DEL_PLATA_BOUNDS.east }
+        new google.maps.LatLng(MAR_DEL_PLATA_BOUNDS.south, MAR_DEL_PLATA_BOUNDS.west),
+        new google.maps.LatLng(MAR_DEL_PLATA_BOUNDS.north, MAR_DEL_PLATA_BOUNDS.east)
       ),
     };
 
@@ -120,7 +126,7 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult | n
       let countryComponent = '';
 
       result.address_components.forEach(component => {
-        if (component.types.includes('locality')) {
+        if (component.types.includes('locality')) { // 'locality' usually represents the city
           cityComponent = component.long_name;
         }
         if (component.types.includes('country')) {
@@ -128,6 +134,7 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult | n
         }
       });
       
+      // Check if the result is within the defined bounds for Mar del Plata
       const isInMarDelPlataStrictBounds =
         lat >= MAR_DEL_PLATA_BOUNDS.south &&
         lat <= MAR_DEL_PLATA_BOUNDS.north &&
@@ -139,12 +146,12 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult | n
           lat,
           lng,
           formattedAddress: result.formatted_address,
-          city: cityComponent || undefined,
-          country: countryComponent || undefined,
+          city: cityComponent || undefined, // Store city if found
+          country: countryComponent || undefined, // Store country if found
         };
       } else {
         console.warn('Address geocoded outside Mar del Plata bounds:', result.formatted_address, {lat,lng});
-        return null;
+        return null; // Address is outside Mar del Plata
       }
     } else {
       console.warn('No results found for address:', address);
@@ -152,10 +159,11 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult | n
     }
   } catch (error) {
     console.error('Geocoding error in geocodeAddress:', error);
-    // If the error from getGoogleMapsApi was already specific, re-throw it or a new one.
-    if (error instanceof Error && error.message.includes("Google Maps JavaScript API is not activated")) {
-        throw error; // Re-throw specific error
+    // Re-throw the error if it's already the user-friendly one from getGoogleMapsApi,
+    // or wrap it if it's a different error.
+    if (error instanceof Error && error.message.startsWith('Failed to initialize Google Maps')) {
+        throw error;
     }
-    return null; // Or throw a new generic geocoding error
+    throw new Error(`Geocoding failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
