@@ -88,10 +88,10 @@ importers:
         version: 2.49.8
       '@tanstack-query-firebase/react':
         specifier: ^1.0.7
-        version: 1.0.7(@tanstack/react-query@5.77.1(react@18.3.1))(firebase@11.8.1)
+        version: 1.0.7(@tanstack/react-query@5.77.2(react@18.3.1))(firebase@11.8.1)
       '@tanstack/react-query':
-        specifier: ^5.77.1
-        version: 5.77.1(react@18.3.1)
+        specifier: ^5.77.2
+        version: 5.77.2(react@18.3.1)
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -1429,11 +1429,11 @@ packages:
       '@tanstack/react-query': ^5
       firebase: ^11.3.0
 
-  '@tanstack/query-core@5.77.1':
-    resolution: {integrity: sha512-nfxVhy4UynChMFfN4NxwI8pktV9R3Zt/ROxOAe6pdOf8CigDLn26p+ex1YW5uien26BBICLmN0dTvIELHCs5vw==}
+  '@tanstack/query-core@5.77.2':
+    resolution: {integrity: sha512-1lqJwPsR6GX6nZFw06erRt518O19tWU6Q+x0fJUygl4lxHCYF2nhzBPwLKk2NPjYOrpR0K567hxPc5K++xDe9Q==}
 
-  '@tanstack/react-query@5.77.1':
-    resolution: {integrity: sha512-qBwpxFg0+MZF0fICQwgvzwrVbcs7TdQlLyEd1f1dN83oeIALofCIAJHV7sPWu+BCS5tcXkG5CvOuf7yla8GYqQ==}
+  '@tanstack/react-query@5.77.2':
+    resolution: {integrity: sha512-BRHxWdy1mHmgAcYA/qy2IPLylT81oebLgkm9K85viN2Qol/Vq48t1dzDFeDIVQjTWDV96AmqsLNPlH5HjyKCxA==}
     peerDependencies:
       react: ^18 || ^19
 
@@ -4377,16 +4377,16 @@ snapshots:
     dependencies:
       tslib: 2.8.1
 
-  '@tanstack-query-firebase/react@1.0.7(@tanstack/react-query@5.77.1(react@18.3.1))(firebase@11.8.1)':
+  '@tanstack-query-firebase/react@1.0.7(@tanstack/react-query@5.77.2(react@18.3.1))(firebase@11.8.1)':
     dependencies:
-      '@tanstack/react-query': 5.77.1(react@18.3.1)
+      '@tanstack/react-query': 5.77.2(react@18.3.1)
       firebase: 11.8.1
 
-  '@tanstack/query-core@5.77.1': {}
+  '@tanstack/query-core@5.77.2': {}
 
-  '@tanstack/react-query@5.77.1(react@18.3.1)':
+  '@tanstack/react-query@5.77.2(react@18.3.1)':
     dependencies:
-      '@tanstack/query-core': 5.77.1
+      '@tanstack/query-core': 5.77.2
       react: 18.3.1
 
   '@types/d3-array@3.2.1': {}
