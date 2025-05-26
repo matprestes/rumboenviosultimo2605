@@ -149,16 +149,11 @@ export const EnvioBaseSchema = z.object({
 });
 
 export const EnvioSchema = EnvioBaseSchema.superRefine((data, ctx) => {
-  if (!data.remitente_cliente_id && !data.cliente_temporal_nombre) {
+  if (!data.remitente_cliente_id && !data.cliente_temporal_nombre && !data.empresa_origen_id) { // If no origin empresa, one of client types is needed
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      message: "Debe seleccionar un cliente remitente o ingresar un nombre de cliente temporal.",
-      path: ["remitente_cliente_id"], // Or a more general path
-    });
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "Debe seleccionar un cliente remitente o ingresar un nombre de cliente temporal.",
-      path: ["cliente_temporal_nombre"],
+      message: "Debe seleccionar un cliente remitente, una empresa de origen, o ingresar un nombre de cliente temporal.",
+      path: ["remitente_cliente_id"], 
     });
   }
   if (data.cliente_temporal_nombre && !data.cliente_temporal_telefono) {
@@ -187,7 +182,7 @@ export const DosRuedasEnvioFormSchema = z.object({
 export type DosRuedasEnvioFormValues = z.infer<typeof DosRuedasEnvioFormSchema>;
 
 export interface EnvioConDetalles extends Envio {
-  clientes?: Pick<Cliente, 'id' | 'nombre' | 'apellido'> | null; // For remitente_cliente_id
+  clientes?: Pick<Cliente, 'id' | 'nombre' | 'apellido'> | null; 
   empresas_origen?: Pick<Empresa, 'id' | 'nombre'> | null;
   empresas_destino?: Pick<Empresa, 'id' | 'nombre'> | null;
   tipos_paquete?: Pick<TipoPaquete, 'id' | 'nombre'> | null;
@@ -217,7 +212,7 @@ export type RepartoFormValues = Omit<Reparto, 'id' | 'created_at' | 'updated_at'
 
 export interface RepartoConDetalles extends Reparto {
   repartidores?: Pick<Repartidor, 'id' | 'nombre'> | null;
-  empresas?: Pick<Empresa, 'id' | 'nombre'> | null; // For empresa_asociada_id
+  empresas?: Pick<Empresa, 'id' | 'nombre'> | null; 
   paradas_count?: number;
 }
 
@@ -225,9 +220,10 @@ export interface RepartoConDetalles extends Reparto {
 export const ParadaRepartoSchema = z.object({
   id: z.string().uuid().optional(),
   reparto_id: z.string().uuid(),
-  envio_id: z.string().uuid(),
+  envio_id: z.string().uuid().nullable().optional(), // Made nullable for "Retiro en Empresa" stop
+  descripcion_parada: z.string().nullable().optional(), // For non-envio specific stops
   orden_visita: z.number().int().positive().nullable().optional(),
-  estado_parada: EstadoEnvioEnum.default('asignado'), // Estado del envío dentro del reparto
+  estado_parada: EstadoEnvioEnum.default('asignado'), 
   hora_estimada_llegada: z.string().nullable().optional(),
   hora_real_llegada: z.string().nullable().optional(),
   notas_parada: z.string().nullable().optional(),
@@ -238,8 +234,29 @@ export const ParadaRepartoSchema = z.object({
 export type ParadaReparto = z.infer<typeof ParadaRepartoSchema>;
 
 export interface ParadaConDetalles extends ParadaReparto {
-  envios?: EnvioConDetalles | null; // Full envio details for display
+  envios?: EnvioConDetalles | null; 
 }
+
+// --- Reparto Lote Schemas ---
+export const RepartoLoteClientAssignmentSchema = z.object({
+  cliente_id: z.string().uuid(),
+  tipo_servicio_id: z.string().uuid({ message: "Seleccione un tipo de servicio." }),
+  precio: z.preprocess(
+    (val) => (val === "" || val === null || val === undefined ? 0 : parseFloat(String(val))),
+    z.number().min(0, "El precio debe ser 0 o mayor.")
+  ),
+  notas_envio: z.string().optional().nullable(),
+});
+export type RepartoLoteClientAssignment = z.infer<typeof RepartoLoteClientAssignmentSchema>;
+
+export const RepartoLoteFormSchema = z.object({
+  empresa_id: z.string().uuid({ message: "Debe seleccionar una empresa." }),
+  fecha_reparto: z.date({ required_error: "La fecha de reparto es requerida." }),
+  repartidor_id: z.string().uuid({ message: "Debe seleccionar un repartidor." }),
+  notas_reparto: z.string().optional().nullable(),
+  asignaciones_clientes: z.array(RepartoLoteClientAssignmentSchema).min(1, "Debe asignar al menos un cliente al reparto."),
+});
+export type RepartoLoteFormValues = z.infer<typeof RepartoLoteFormSchema>;
 
 
 // --- Original Schemas from previous step (AddressInputForm & ShipmentRequestForm) ---
