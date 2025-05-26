@@ -18,7 +18,7 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
-import { Home, Building2, Users, Truck, Package, ClipboardList, MapIcon, Settings, ShipWheel } from 'lucide-react'; // ShipWheel as logo
+import { Home, Building2, Users, Truck, Package, ClipboardList, MapIcon, Settings, ShipWheel, Route } from 'lucide-react'; // ShipWheel as logo, Route for Mapa Envios
 import { Separator } from './ui/separator';
 
 const navItems = [
@@ -28,7 +28,7 @@ const navItems = [
   { href: '/repartidores', label: 'Repartidores', icon: Truck },
   { href: '/envios', label: 'Envíos', icon: Package },
   { href: '/repartos', label: 'Repartos', icon: ClipboardList },
-  { href: '/mapa', label: 'Mapa de Envíos', icon: MapIcon },
+  { href: '/mapa-envios', label: 'Mapa de Envíos', icon: Route }, // Changed icon and href
   { type: 'separator' },
   { href: '/configuracion', label: 'Configuración', icon: Settings },
 ];
@@ -95,7 +95,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             {/* Theme toggle, User avatar etc. */}
           </div>
         </header>
-        <main className="flex-1 p-4 md:p-6 lg:p-8">
+        <main className="flex-1 p-4 md:p-6 lg:p-8 h-[calc(100vh-3.5rem)] overflow-auto"> {/* Ensure main content area can scroll if needed */}
           {children}
         </main>
       </SidebarInset>
