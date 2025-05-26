@@ -1,4 +1,6 @@
 
+// REMOVED 'use server'; directive if it was present. This module is for client-side Google Maps API interaction.
+
 import { Loader, type LoaderOptions } from '@googlemaps/js-api-loader';
 
 const MAR_DEL_PLATA_BOUNDS = { // Approximate bounding box for Mar del Plata
@@ -10,7 +12,7 @@ const MAR_DEL_PLATA_BOUNDS = { // Approximate bounding box for Mar del Plata
 
 const API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
-if (!API_KEY) {
+if (!API_KEY && typeof window !== 'undefined') { // Check for window to avoid server-side warnings during build
   console.warn(
     'Google Maps API key is missing. Geocoding and maps will not work. Set NEXT_PUBLIC_GOOGLE_MAPS_API_KEY in your .env.local file.'
   );
@@ -27,28 +29,35 @@ const loaderOptions: LoaderOptions = {
 };
 
 let googleMapsApiPromise: Promise<typeof google> | null = null;
-let loaderInstance: Loader | null = null; // Singleton Loader instance
+let loaderInstance: Loader | null = null;
 
 function getLoaderInstance(): Loader {
   if (!API_KEY) {
+    // This case should ideally be handled by the API_KEY check above or in consuming components
+    // For robustness, we'll still throw if somehow instantiated without an API key at this stage
     throw new Error('Google Maps API key is not configured for Loader instantiation.');
   }
   if (!loaderInstance) {
-    // console.log("Instantiating Google Maps Loader with options:", loaderOptions); // For debugging
     loaderInstance = new Loader(loaderOptions);
   }
   return loaderInstance;
 }
 
 export async function getGoogleMapsApi(): Promise<typeof google> {
+  if (typeof window === 'undefined') {
+    // Prevent execution on the server during build/SSR for non-Server Action contexts
+    return Promise.reject(new Error('Google Maps API cannot be loaded on the server. Call from client-side component.'));
+  }
   if (!API_KEY) {
     return Promise.reject(new Error('Google Maps API key is not configured.'));
   }
   if (!googleMapsApiPromise) {
-    // Ensures Loader is instantiated only once via getLoaderInstance,
-    // and .load() is called only once on that singleton instance.
     const loader = getLoaderInstance();
-    googleMapsApiPromise = loader.load();
+    googleMapsApiPromise = loader.load().catch(err => {
+      console.error("Failed to load Google Maps API via Loader:", err);
+      googleMapsApiPromise = null; // Reset promise on failure to allow retry if applicable
+      throw err; // Re-throw to be caught by calling code
+    });
   }
   return googleMapsApiPromise;
 }
@@ -61,22 +70,30 @@ export interface GeocodeResult {
   country?: string;
 }
 
+// This function is intended for client-side use only as it uses the JS Maps API
 export async function geocodeAddress(address: string): Promise<GeocodeResult | null> {
+  if (typeof window === 'undefined' || typeof google === 'undefined' || typeof google.maps === 'undefined') {
+    console.warn('geocodeAddress called in a non-browser environment or before Maps API loaded.');
+    return null;
+  }
   if (!API_KEY) {
     console.error('Geocoding skipped: Google Maps API key is missing.');
     return null;
   }
 
   try {
-    const google = await getGoogleMapsApi();
-    const geocoder = new google.maps.Geocoder();
+    // getGoogleMapsApi ensures the 'google' object is loaded.
+    // However, geocodeAddress might be called before the promise from getGoogleMapsApi resolves in some components.
+    // A robust way is to ensure 'google' is available directly.
+    const maps = (await getGoogleMapsApi()).maps;
+    const geocoder = new maps.Geocoder();
 
     const request: google.maps.GeocoderRequest = {
       address: address,
       componentRestrictions: {
         country: 'AR',
       },
-       bounds: new google.maps.LatLngBounds(
+       bounds: new maps.LatLngBounds(
         { lat: MAR_DEL_PLATA_BOUNDS.south, lng: MAR_DEL_PLATA_BOUNDS.west },
         { lat: MAR_DEL_PLATA_BOUNDS.north, lng: MAR_DEL_PLATA_BOUNDS.east }
       ),
@@ -108,8 +125,6 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult | n
         lng >= MAR_DEL_PLATA_BOUNDS.west &&
         lng <= MAR_DEL_PLATA_BOUNDS.east;
       
-      // Consider valid if strictly within bounds OR if locality is Mar del Plata (for edge cases)
-      // However, for this service, let's be strict with bounds for now.
       if (isInMarDelPlataStrictBounds) {
         return {
           lat,
@@ -127,10 +142,7 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult | n
       return null;
     }
   } catch (error) {
-    console.error('Geocoding error:', error);
-    if (error instanceof Error && (error.message.includes("google is not defined") || error.message.includes("Cannot read properties of undefined (reading 'Geocoder')"))) {
-        console.error("Google Maps API might not have loaded correctly before geocodeAddress was called.");
-    }
+    console.error('Geocoding error in geocodeAddress:', error);
     return null;
   }
 }

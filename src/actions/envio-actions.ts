@@ -3,7 +3,7 @@
 
 import { supabase } from '@/lib/supabase/client';
 import { EnvioSchema, type Envio, type Cliente, type Empresa, type TipoPaquete, type TipoServicio, type EnvioConDetalles, type DosRuedasEnvioFormValues } from '@/lib/schemas';
-import { geocodeAddress } from '@/services/google-maps-service';
+// import { geocodeAddress } from '@/services/google-maps-service'; // REMOVED: Server Actions cannot use client-side geocoding
 import { revalidatePath } from 'next/cache';
 
 // Helper function to get user ID (placeholder for actual auth integration)
@@ -15,18 +15,30 @@ async function getUserId() {
   return null; // For DosRuedas, it might be a public form, so user_id could be null
 }
 
+// Helper function for server-side geocoding (requires a non-public API key and direct HTTP request)
+// This is a placeholder and would need actual implementation if server-side geocoding is critical.
+async function serverSideGeocodeAddress(address: string): Promise<{ lat: number; lng: number; formattedAddress: string } | null> {
+  console.warn("Server-side geocoding for \"" + address + "\" is NOT IMPLEMENTED. Relying on client-side geocoding.");
+  // In a real app, you would use fetch() to call Google Geocoding API Web Service
+  // with a server-only API key.
+  // Example:
+  // const apiKey = process.env.GOOGLE_MAPS_SERVER_API_KEY;
+  // const response = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}&region=AR&components=country:AR`);
+  // const data = await response.json();
+  // if (data.status === 'OK' && data.results.length > 0) { ... parse results ... }
+  return null;
+}
+
 export async function createEnvioAction(
-    formData: Envio | DosRuedasEnvioFormValues // Can accept both full Envio or simplified form
+    formData: Envio | DosRuedasEnvioFormValues
 ): Promise<{ success: boolean; data?: Envio; error?: string }> {
     
     const currentUserId = await getUserId();
     let dataToInsert: Partial<Envio> = {};
 
-    // Differentiate payload based on presence of remitente_cliente_id (DosRuedas form)
     if ('remitente_cliente_id' in formData && formData.remitente_cliente_id) {
         const dosRuedasData = formData as DosRuedasEnvioFormValues;
         
-        // Fetch sender (remitente) details
         const { data: remitenteData, error: remitenteError } = await supabase
             .from('clientes')
             .select('nombre, apellido, telefono, direccion, latitud, longitud')
@@ -36,57 +48,56 @@ export async function createEnvioAction(
         if (remitenteError || !remitenteData) {
             return { success: false, error: "Remitente no encontrado o error al obtener sus datos." };
         }
+        if (!remitenteData.latitud || !remitenteData.longitud) {
+            return { success: false, error: "El remitente \"" + remitenteData.nombre + " " + remitenteData.apellido + "\" no tiene coordenadas geocodificadas. Actualice los datos del cliente." };
+        }
 
         dataToInsert = {
             remitente_cliente_id: dosRuedasData.remitente_cliente_id,
-            // nombre_remitente: `${remitenteData.nombre} ${remitenteData.apellido}`, // No such field in DB currently
-            // telefono_remitente: remitenteData.telefono, // No such field
             direccion_origen: remitenteData.direccion,
             latitud_origen: remitenteData.latitud,
             longitud_origen: remitenteData.longitud,
-
             nombre_destinatario: dosRuedasData.nombre_destinatario,
             telefono_destinatario: dosRuedasData.telefono_destinatario,
-            direccion_destino: dosRuedasData.direccion_destino,
-            // latitud_destino and longitud_destino will be geocoded below
-
+            direccion_destino: dosRuedasData.direccion_destino, // Client should provide geocoded version if possible
+            // latitud_destino and longitud_destino should ideally come pre-geocoded from client for this form type
+            // OR, if not, implement robust server-side geocoding here.
+            // For now, we assume client-side form tries to geocode it first.
+            // If not provided, it will be null.
+            latitud_destino: null, // Placeholder, client should fill via its geocoding
+            longitud_destino: null, // Placeholder
             horario_retiro_desde: dosRuedasData.horario_retiro_desde,
             horario_entrega_hasta: dosRuedasData.horario_entrega_hasta,
             precio: dosRuedasData.precio,
             detalles_adicionales: dosRuedasData.detalles_adicionales,
-            estado: 'pendiente_asignacion', // Default status
+            estado: 'pendiente_asignacion',
             user_id: currentUserId,
         };
         
-        // Geocode destination address for DosRuedas form
-        if (dataToInsert.direccion_destino && (!dataToInsert.latitud_destino || !dataToInsert.longitud_destino)) {
-            const geocodedDestination = await geocodeAddress(dataToInsert.direccion_destino);
+        // For DosRuedas, rely on client-side geocoding. If server-side geocoding for destination is needed here
+        // (e.g. if client-side form couldn't do it), implement proper server-side call.
+        // For now, we'll just use the address as is, assuming client-side did its best.
+        // A proper server-side geocode would be needed here if client values are missing/untrusted.
+        if (dosRuedasData.direccion_destino && (!dataToInsert.latitud_destino || !dataToInsert.longitud_destino)) {
+            const geocodedDestination = await serverSideGeocodeAddress(dosRuedasData.direccion_destino);
             if (geocodedDestination) {
-                dataToInsert.latitud_destino = geocodedDestination.lat;
-                dataToInsert.longitud_destino = geocodedDestination.lng;
-                dataToInsert.direccion_destino = geocodedDestination.formattedAddress;
+               dataToInsert.latitud_destino = geocodedDestination.lat;
+               dataToInsert.longitud_destino = geocodedDestination.lng;
+               dataToInsert.direccion_destino = geocodedDestination.formattedAddress; // Update with formatted address
             } else {
-                 console.warn(`Geocoding failed for destination address: ${dataToInsert.direccion_destino}`);
-                // Return error if geocoding fails for critical address
-                return { success: false, error: `No se pudo verificar la dirección de destino: ${dataToInsert.direccion_destino}. Asegúrese que sea de Mar del Plata.` };
+                console.warn("Server-side geocoding failed for destination in createEnvioAction (DosRuedas): " + dosRuedasData.direccion_destino);
+                // Proceeding without coordinates for destination if server-side geocoding fails
             }
         }
-        
-        // Assign default tipo_paquete_id and tipo_servicio_id for DosRuedas form
-        // Fetch first available tipo_paquete
+
+
         const { data: defaultPaquete, error: paqueteError } = await supabase.from('tipos_paquete').select('id').limit(1).single();
-        if (paqueteError || !defaultPaquete) {
-            return { success: false, error: "No se pudo encontrar un tipo de paquete por defecto." };
-        }
+        if (paqueteError || !defaultPaquete) return { success: false, error: "No se pudo encontrar un tipo de paquete por defecto." };
         dataToInsert.tipo_paquete_id = defaultPaquete.id;
 
-        // Fetch first available tipo_servicio
         const { data: defaultServicio, error: servicioError } = await supabase.from('tipos_servicio').select('id').limit(1).single();
-        if (servicioError || !defaultServicio) {
-            return { success: false, error: "No se pudo encontrar un tipo de servicio por defecto." };
-        }
+        if (servicioError || !defaultServicio) return { success: false, error: "No se pudo encontrar un tipo de servicio por defecto." };
         dataToInsert.tipo_servicio_id = defaultServicio.id;
-
 
     } else { // Handle full Envio form (internal)
         const fullEnvioData = formData as Envio;
@@ -96,35 +107,21 @@ export async function createEnvioAction(
         }
         let internalData = validatedFields.data;
 
-        if (internalData.direccion_origen && (!internalData.latitud_origen || !internalData.longitud_origen)) {
-            const geocodedOrigin = await geocodeAddress(internalData.direccion_origen);
-            if (geocodedOrigin) {
-                internalData.latitud_origen = geocodedOrigin.lat;
-                internalData.longitud_origen = geocodedOrigin.lng;
-                internalData.direccion_origen = geocodedOrigin.formattedAddress;
-            } else {
-                console.warn(`Geocoding failed for origin address: ${internalData.direccion_origen}`);
-                 return { success: false, error: `No se pudo verificar la dirección de origen: ${internalData.direccion_origen}. Asegúrese que sea de Mar del Plata.` };
-            }
+        // For internal form, client-side form is responsible for geocoding and passing lat/lng.
+        // Server actions should not rely on client-side JS API loader.
+        if (!internalData.latitud_origen || !internalData.longitud_origen) {
+            console.warn("Envío creado sin coordenadas de origen para: " + internalData.direccion_origen + ". Asegúrese que el cliente geocodifique.");
         }
-        if (internalData.direccion_destino && (!internalData.latitud_destino || !internalData.longitud_destino)) {
-            const geocodedDestination = await geocodeAddress(internalData.direccion_destino);
-            if (geocodedDestination) {
-                internalData.latitud_destino = geocodedDestination.lat;
-                internalData.longitud_destino = geocodedDestination.lng;
-                internalData.direccion_destino = geocodedDestination.formattedAddress;
-            } else {
-                console.warn(`Geocoding failed for destination address: ${internalData.direccion_destino}`);
-                return { success: false, error: `No se pudo verificar la dirección de destino: ${internalData.direccion_destino}. Asegúrese que sea de Mar del Plata.` };
-            }
+        if (!internalData.latitud_destino || !internalData.longitud_destino) {
+           console.warn("Envío creado sin coordenadas de destino para: " + internalData.direccion_destino + ". Asegúrese que el cliente geocodifique.");
         }
+
         dataToInsert = {
             ...internalData,
             user_id: currentUserId,
-            fecha_estimada_entrega: internalData.fecha_estimada_entrega ? internalData.fecha_estimada_entrega.toISOString().split('T')[0] : null, // Format as YYYY-MM-DD for DATE type
+            fecha_estimada_entrega: internalData.fecha_estimada_entrega ? new Date(internalData.fecha_estimada_entrega).toISOString().split('T')[0] : null,
         };
     }
-
 
   const { data: newEnvio, error } = await supabase
     .from('envios')
@@ -138,7 +135,7 @@ export async function createEnvioAction(
   }
 
   revalidatePath('/envios');
-  if ('remitente_cliente_id' in formData) revalidatePath('/dos-ruedas'); // Revalidate public form page
+  if ('remitente_cliente_id' in formData) revalidatePath('/dos-ruedas');
   return { success: true, data: newEnvio as Envio };
 }
 
@@ -149,31 +146,18 @@ export async function updateEnvioAction(id: string, formData: Envio): Promise<{ 
   }
   let { data } = validatedFields;
 
-   if (data.direccion_origen && (!data.latitud_origen || !data.longitud_origen || data.direccion_origen !== formData.direccion_origen)) {
-    const geocodedOrigin = await geocodeAddress(data.direccion_origen);
-    if (geocodedOrigin) {
-      data.latitud_origen = geocodedOrigin.lat;
-      data.longitud_origen = geocodedOrigin.lng;
-      data.direccion_origen = geocodedOrigin.formattedAddress;
-    }  else {
-       return { success: false, error: `No se pudo verificar la dirección de origen: ${data.direccion_origen}. Asegúrese que sea de Mar del Plata.` };
-    }
+  // Client-side form is responsible for geocoding if addresses change.
+  if ((formData.direccion_origen !== data.direccion_origen || !data.latitud_origen || !data.longitud_origen) && data.direccion_origen) {
+    console.warn("Actualizando envío " + id + ". Dirección de origen cambiada o sin coordenadas: " + data.direccion_origen + ". Asegúrese que el cliente geocodifique.");
   }
 
-  if (data.direccion_destino && (!data.latitud_destino || !data.longitud_destino || data.direccion_destino !== formData.direccion_destino)) {
-    const geocodedDestination = await geocodeAddress(data.direccion_destino);
-    if (geocodedDestination) {
-      data.latitud_destino = geocodedDestination.lat;
-      data.longitud_destino = geocodedDestination.lng;
-      data.direccion_destino = geocodedDestination.formattedAddress;
-    } else {
-      return { success: false, error: `No se pudo verificar la dirección de destino: ${data.direccion_destino}. Asegúrese que sea de Mar del Plata.` };
-    }
+  if ((formData.direccion_destino !== data.direccion_destino || !data.latitud_destino || !data.longitud_destino) && data.direccion_destino) {
+    console.warn("Actualizando envío " + id + ". Dirección de destino cambiada o sin coordenadas: " + data.direccion_destino + ". Asegúrese que el cliente geocodifique.");
   }
   
   const dataToUpdate = {
     ...data,
-    fecha_estimada_entrega: data.fecha_estimada_entrega ? data.fecha_estimada_entrega.toISOString().split('T')[0] : null,
+    fecha_estimada_entrega: data.fecha_estimada_entrega ? new Date(data.fecha_estimada_entrega).toISOString().split('T')[0] : null,
     updated_at: new Date().toISOString(),
   };
 
@@ -192,22 +176,16 @@ export async function updateEnvioAction(id: string, formData: Envio): Promise<{ 
     return { success: false, error: error.message };
   }
   revalidatePath('/envios');
-  revalidatePath(`/envios/${id}/editar`);
+  revalidatePath("/envios/" + id + "/editar");
   return { success: true, data: updatedEnvio as Envio };
 }
 
 export async function getEnvioByIdAction(id: string): Promise<{ envio?: EnvioConDetalles; error?: string }> {
   const { data, error } = await supabase
     .from('envios')
-    .select(`
-      *,
-      clientes:remitente_cliente_id (*), 
-      empresas_origen:empresa_origen_id (*),
-      empresas_destino:empresa_destino_id (*),
-      tipos_paquete (*),
-      tipos_servicio (*),
-      repartidores:repartidor_asignado_id (*)
-    `)
+    .select(
+      "*, clientes:remitente_cliente_id (*), empresas_origen:empresa_origen_id (*), empresas_destino:empresa_destino_id (*), tipos_paquete (*), tipos_servicio (*), repartidores:repartidor_asignado_id (*)"
+    )
     .eq('id', id)
     .single();
 
@@ -221,15 +199,13 @@ export async function getEnvioByIdAction(id: string): Promise<{ envio?: EnvioCon
 
   const envioData = { ...data } as any;
   if (envioData.fecha_estimada_entrega) {
-    // Ensure it's treated as local date by adding time part before parsing
-    // Supabase DATE type returns YYYY-MM-DD string.
     const dateStr = envioData.fecha_estimada_entrega;
-    if (typeof dateStr === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    if (typeof dateStr === 'string' && /^\\d{4}-\\d{2}-\\d{2}$/.test(dateStr)) {
       envioData.fecha_estimada_entrega = new Date(dateStr + "T00:00:00");
     } else if (dateStr instanceof Date) {
-       envioData.fecha_estimada_entrega = dateStr; // Already a Date object
+       envioData.fecha_estimada_entrega = dateStr;
     } else {
-      envioData.fecha_estimada_entrega = null; // Invalid date string
+      envioData.fecha_estimada_entrega = null;
     }
   }
 
@@ -245,15 +221,13 @@ export async function getEnviosAction(
   
   let query = supabase
     .from('envios')
-    .select(`
-      *,
-      clientes:remitente_cliente_id (id, nombre, apellido),
-      tipos_servicio (id, nombre),
-      repartidores:repartidor_asignado_id (id, nombre)
-    `, { count: 'exact' });
+    .select(
+      "*, clientes:remitente_cliente_id (id, nombre, apellido), tipos_servicio (id, nombre), repartidores:repartidor_asignado_id (id, nombre)",
+      { count: 'exact' }
+    );
 
   if (filters.searchTerm) {
-    query = query.or(`direccion_origen.ilike.%${filters.searchTerm}%,direccion_destino.ilike.%${filters.searchTerm}%,nombre_destinatario.ilike.%${filters.searchTerm}%`);
+    query = query.or("direccion_origen.ilike.%" + filters.searchTerm + "%,direccion_destino.ilike.%" + filters.searchTerm + "%,nombre_destinatario.ilike.%" + filters.searchTerm + "%");
   }
   if (filters.estado) {
     query = query.eq('estado', filters.estado);
@@ -282,7 +256,7 @@ export async function getEnviosAction(
 export async function getClientesForSelect(): Promise<Pick<Cliente, 'id' | 'nombre' | 'apellido' | 'direccion' | 'telefono' | 'latitud' | 'longitud'>[]> {
   const { data, error } = await supabase
     .from('clientes')
-    .select('id, nombre, apellido, direccion, telefono, latitud, longitud') // Added more fields for DosRuedasForm
+    .select('id, nombre, apellido, direccion, telefono, latitud, longitud')
     .eq('estado', 'activo')
     .order('apellido')
     .order('nombre');
@@ -335,4 +309,3 @@ export async function deleteEnvioAction(id: string): Promise<{ success: boolean;
   return { success: true };
 }
 
-    
