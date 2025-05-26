@@ -5,7 +5,6 @@ import * as React from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ClipboardList, PlusCircle, Loader2, Eye, Trash2, CalendarIcon, Filter, TruckIcon } from "lucide-react";
@@ -41,13 +40,15 @@ export default function RepartosPage() {
   const [isDeleting, setIsDeleting] = React.useState(false);
   const [repartoToDelete, setRepartoToDelete] = React.useState<RepartoConDetalles | null>(null);
 
-  const [repartidorFilter, setRepartidorFilter] = React.useState(searchParams.get('repartidor') || '');
-  const [fechaFilter, setFechaFilter] = React.useState<Date | undefined>(
-    searchParams.get('fecha') ? new Date(searchParams.get('fecha')!) : undefined
-  );
-  const [estadoFilter, setEstadoFilter] = React.useState<EstadoReparto | ''>(searchParams.get('estado') as EstadoReparto || '');
-  const currentPage = Number(searchParams.get('page')) || 1;
-
+  // Initialize state from URL search params
+  const [repartidorFilter, setRepartidorFilter] = React.useState(() => searchParams.get('repartidor') || '');
+  const [fechaFilter, setFechaFilter] = React.useState<Date | undefined>(() => {
+    const fechaParam = searchParams.get('fecha');
+    return fechaParam ? new Date(fechaParam + "T00:00:00") : undefined; // Ensure local timezone by adding T00:00:00
+  });
+  const [estadoFilter, setEstadoFilter] = React.useState<EstadoReparto | ''>(() => searchParams.get('estado') as EstadoReparto || '');
+  const [currentPage, setCurrentPage] = React.useState(() => Number(searchParams.get('page')) || 1);
+  
   const fetchRepartidoresList = React.useCallback(async () => {
     const data = await getRepartidoresForSelectAction();
     setRepartidores(data);
@@ -57,14 +58,9 @@ export default function RepartosPage() {
     fetchRepartidoresList();
   }, [fetchRepartidoresList]);
 
-  const fetchRepartos = React.useCallback(async (page: number) => {
+  const fetchRepartos = React.useCallback(async (page: number, currentFilters: {repartidorId?: string, fecha?: string, estado?: string}) => {
     setIsLoading(true);
-    const filters = {
-      repartidorId: repartidorFilter || undefined,
-      fecha: fechaFilter ? format(fechaFilter, 'yyyy-MM-dd') : undefined,
-      estado: estadoFilter || undefined,
-    };
-    const { repartos: data, count, error } = await getRepartosAction(filters, page, ITEMS_PER_PAGE);
+    const { repartos: data, count, error } = await getRepartosAction(currentFilters, page, ITEMS_PER_PAGE);
 
     if (error) {
       toast({ title: "Error al Cargar Repartos", description: error, variant: "destructive" });
@@ -75,29 +71,47 @@ export default function RepartosPage() {
       setTotalRepartos(count);
     }
     setIsLoading(false);
-  }, [toast, repartidorFilter, fechaFilter, estadoFilter]);
+  }, [toast]);
   
+  // Effect to react to changes in searchParams (e.g., browser back/forward, direct URL change)
   React.useEffect(() => {
+    const newPage = Number(searchParams.get('page')) || 1;
+    const newRepartidor = searchParams.get('repartidor') || '';
+    const newFechaStr = searchParams.get('fecha');
+    const newFecha = newFechaStr ? new Date(newFechaStr + "T00:00:00") : undefined;
+    const newEstado = (searchParams.get('estado') as EstadoReparto) || '';
+
+    setCurrentPage(newPage);
+    setRepartidorFilter(newRepartidor);
+    setFechaFilter(newFecha);
+    setEstadoFilter(newEstado);
+
+    const currentFilters = {
+      repartidorId: newRepartidor || undefined,
+      fecha: newFecha ? format(newFecha, 'yyyy-MM-dd') : undefined,
+      estado: newEstado || undefined,
+    };
+    fetchRepartos(newPage, currentFilters);
+
+  }, [searchParams, fetchRepartos]);
+
+
+  const handleApplyFilters = () => {
     const params = new URLSearchParams();
     if (repartidorFilter) params.set('repartidor', repartidorFilter);
     if (fechaFilter) params.set('fecha', format(fechaFilter, 'yyyy-MM-dd'));
     if (estadoFilter) params.set('estado', estadoFilter);
-    if (currentPage > 1) params.set('page', currentPage.toString());
+    params.set('page', '1'); // Reset to page 1 when filters are applied
     
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
-    fetchRepartos(currentPage);
-  }, [repartidorFilter, fechaFilter, estadoFilter, currentPage, fetchRepartos, router, pathname]);
-
-
-  const handleApplyFilters = () => {
-    if(currentPage !== 1) handlePageChange(1); 
-    else fetchRepartos(1);
+    // The useEffect listening to searchParams will handle the state update and data fetch
   };
 
   const handlePageChange = (newPage: number) => {
     const params = new URLSearchParams(searchParams);
     params.set('page', newPage.toString());
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
+     // The useEffect listening to searchParams will handle the state update and data fetch
   };
   
   const handleDeleteConfirm = async () => {
@@ -106,7 +120,13 @@ export default function RepartosPage() {
     const { success, error } = await deleteRepartoAction(repartoToDelete.id);
     if (success) {
       toast({ title: "Reparto Eliminado", description: `El reparto ID ${repartoToDelete.id.substring(0,8)}... ha sido eliminado.` });
-      fetchRepartos(currentPage); 
+      // Refetch with current page and filters
+      const currentFilters = {
+        repartidorId: repartidorFilter || undefined,
+        fecha: fechaFilter ? format(fechaFilter, 'yyyy-MM-dd') : undefined,
+        estado: estadoFilter || undefined,
+      };
+      fetchRepartos(currentPage, currentFilters); 
     } else {
       toast({ title: "Error al Eliminar", description: error, variant: "destructive" });
     }
@@ -263,3 +283,5 @@ export default function RepartosPage() {
     </div>
   );
 }
+
+    
