@@ -24,7 +24,7 @@ const comprehensiveLibraries: LoaderOptions['libraries'] = ['geocoding', 'places
 const loaderOptions: LoaderOptions = {
   apiKey: API_KEY || '',
   version: 'weekly',
-  libraries: comprehensiveLibraries, 
+  libraries: comprehensiveLibraries,
   id: '__googleMapsScriptId', // Ensure a consistent ID for the script tag
 };
 
@@ -43,7 +43,7 @@ function getLoaderInstance(): Loader {
   return loaderInstance;
 }
 
-export function getGoogleMapsApi(): Promise<typeof google> {
+export async function getGoogleMapsApi(): Promise<typeof google> {
   if (!API_KEY) {
     return Promise.reject(new Error('Google Maps API key is not configured.'));
   }
@@ -76,11 +76,11 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult | n
     const request: google.maps.GeocoderRequest = {
       address: address,
       componentRestrictions: {
-        country: 'AR', 
-        locality: 'Mar del Plata', 
+        country: 'AR',
+        locality: 'Mar del Plata',
       },
     };
-    
+
     const response = await geocoder.geocode(request);
 
     if (response.results && response.results.length > 0) {
@@ -104,7 +104,7 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult | n
           countryComponent = component.long_name;
         }
       });
-      
+
       if (!isInMarDelPlata) {
         if (
           lat >= MAR_DEL_PLATA_BOUNDS.south &&
@@ -112,7 +112,7 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult | n
           lng >= MAR_DEL_PLATA_BOUNDS.west &&
           lng <= MAR_DEL_PLATA_BOUNDS.east
         ) {
-          isInMarDelPlata = true; 
+          isInMarDelPlata = true;
         }
       }
 
@@ -126,11 +126,11 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult | n
         };
       } else {
         console.warn('Address geocoded outside Mar del Plata:', result.formatted_address, {lat,lng});
-        return null; 
+        return null;
       }
     } else {
       console.warn('No results found for address:', address);
-      return null; 
+      return null;
     }
   } catch (error) {
     console.error('Geocoding error:', error);
