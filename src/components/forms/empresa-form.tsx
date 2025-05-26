@@ -1,8 +1,8 @@
 
 "use client";
 
-import type * as React from 'react';
-import { useForm } from 'react-hook-form';
+import * as React from 'react';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { EmpresaSchema, type EmpresaFormValues, EstadoEnum } from '@/lib/schemas';
 import { Button } from '@/components/ui/button';
@@ -24,11 +24,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Loader2 } from 'lucide-react';
+import { Loader2, MapPin, CheckCircle, AlertTriangle } from 'lucide-react';
+import { geocodeAddress, type GeocodeResult } from '@/services/google-maps-service';
+import { useToast } from '@/hooks/use-toast';
 
 interface EmpresaFormProps {
-  onSubmit: (data: EmpresaFormValues) => Promise<void>;
-  defaultValues?: Partial<EmpresaFormValues>;
+  onSubmit: (data: EmpresaFormValues & { latitud?: number | null; longitud?: number | null }) => Promise<void>;
+  defaultValues?: Partial<EmpresaFormValues & { latitud?: number | null; longitud?: number | null }>;
   isSubmitting?: boolean;
   submitButtonText?: string;
 }
@@ -39,17 +41,81 @@ export function EmpresaForm({
   isSubmitting = false,
   submitButtonText = "Guardar Empresa"
 }: EmpresaFormProps) {
-  const form = useForm<EmpresaFormValues>({
+  const { toast } = useToast();
+  const [isGeocoding, setIsGeocoding] = React.useState(false);
+  const [geocodedData, setGeocodedData] = React.useState<GeocodeResult | null>(null);
+
+  const form = useForm<EmpresaFormValues & { latitud?: number | null; longitud?: number | null }>({
     resolver: zodResolver(EmpresaSchema.omit({ id: true, created_at: true, updated_at: true, latitud: true, longitud: true })),
     defaultValues: {
       estado: "activo", // Default to active
+      latitud: null,
+      longitud: null,
       ...defaultValues,
     },
   });
 
+  const handleGeocode = async () => {
+    const addressValue = form.getValues("direccion");
+    if (!addressValue || addressValue.trim().length < 5) {
+      toast({
+        title: "Error de Dirección",
+        description: "Por favor, ingrese una dirección más completa para geocodificar.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setIsGeocoding(true);
+    setGeocodedData(null);
+    try {
+      const result = await geocodeAddress(addressValue);
+      if (result) {
+        form.setValue("latitud", result.lat, { shouldValidate: true });
+        form.setValue("longitud", result.lng, { shouldValidate: true });
+        // Optionally update the address field with Google's formatted version
+        // form.setValue("direccion", result.formattedAddress, { shouldValidate: true }); 
+        setGeocodedData(result);
+        toast({
+          title: "Geocodificación Exitosa",
+          description: `Dirección encontrada: ${result.formattedAddress}`,
+          variant: "default",
+        });
+      } else {
+        form.setValue("latitud", null);
+        form.setValue("longitud", null);
+        toast({
+          title: "Error de Geocodificación",
+          description: "No se pudo encontrar la dirección o está fuera de Mar del Plata.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Geocoding error in form:", error);
+      toast({
+        title: "Error de Geocodificación",
+        description: "Ocurrió un error al procesar la dirección.",
+        variant: "destructive",
+      });
+       form.setValue("latitud", null);
+       form.setValue("longitud", null);
+    } finally {
+      setIsGeocoding(false);
+    }
+  };
+
+  const handleFormSubmit = async (data: EmpresaFormValues & { latitud?: number | null; longitud?: number | null }) => {
+    const dataToSubmit = {
+      ...data,
+      latitud: form.getValues("latitud"), // Ensure latest geocoded values are included
+      longitud: form.getValues("longitud"),
+    };
+    await onSubmit(dataToSubmit);
+  };
+
+
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+      <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-6">
         <FormField
           control={form.control}
           name="nombre"
@@ -70,16 +136,33 @@ export function EmpresaForm({
           render={({ field }) => (
             <FormItem>
               <FormLabel>Dirección</FormLabel>
-              <FormControl>
-                <Input placeholder="Ej: Av. San Martín 1234, Mar del Plata" {...field} />
-              </FormControl>
-              <FormDescription>
-                La dirección se usará para geocodificación.
-              </FormDescription>
+              <div className="flex items-center gap-2">
+                <FormControl className="flex-grow">
+                  <Input placeholder="Ej: Av. San Martín 1234, Mar del Plata" {...field} />
+                </FormControl>
+                <Button type="button" onClick={handleGeocode} disabled={isGeocoding} variant="outline">
+                  {isGeocoding ? <Loader2 className="h-4 w-4 animate-spin" /> : <MapPin className="h-4 w-4" />}
+                  <span className="ml-2 hidden sm:inline">Verificar</span>
+                </Button>
+              </div>
+              {geocodedData && (
+                <FormDescription className="mt-1 text-green-600 flex items-center gap-1">
+                  <CheckCircle size={16} /> Dirección verificada: {geocodedData.formattedAddress}
+                </FormDescription>
+              )}
+              {!isGeocoding && form.formState.dirtyFields.direccion && !geocodedData && (
+                 <FormDescription className="mt-1 text-orange-600 flex items-center gap-1">
+                  <AlertTriangle size={16}/>  Verifique la dirección para obtener coordenadas.
+                </FormDescription>
+              )}
               <FormMessage />
             </FormItem>
           )}
         />
+         {/* Hidden fields for lat/lng, controller ensures they are part of form state */}
+        <Controller control={form.control} name="latitud" render={({ field }) => <input type="hidden" {...field} />} />
+        <Controller control={form.control} name="longitud" render={({ field }) => <input type="hidden" {...field} />} />
+
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <FormField
@@ -155,8 +238,8 @@ export function EmpresaForm({
           )}
         />
 
-        <Button type="submit" className="w-full" disabled={isSubmitting}>
-          {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+        <Button type="submit" className="w-full" disabled={isSubmitting || isGeocoding}>
+          {(isSubmitting || isGeocoding) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           {submitButtonText}
         </Button>
       </form>
