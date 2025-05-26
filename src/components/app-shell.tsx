@@ -18,10 +18,12 @@ import {
   useSidebar,
   SidebarMenuSub,
   SidebarMenuSubButton,
+  SidebarMenuSubItem, // Added based on usage in the file
 } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
-import { Home, Building2, Users, Truck, Package, ClipboardList, MapIcon, Settings, ShipWheel, Route, ClipboardPlus, Layers } from 'lucide-react'; // Added Layers for Reparto Lote
+import { Home, Building2, Users, Truck, Package, ClipboardList, MapIcon, Settings, ShipWheel, Route, ClipboardPlus, Layers } from 'lucide-react';
 import { Separator } from './ui/separator';
+import { cn } from "@/lib/utils"; // Added missing import
 
 const navItems = [
   { href: '/', label: 'Inicio', icon: Home },
@@ -29,8 +31,8 @@ const navItems = [
   { href: '/clientes', label: 'Clientes', icon: Users },
   { href: '/repartidores', label: 'Repartidores', icon: Truck },
   { href: '/envios', label: 'Envíos', icon: Package },
-  { 
-    label: 'Repartos', 
+  {
+    label: 'Repartos',
     icon: ClipboardPlus,
     subItems: [
       { href: '/repartos', label: 'Ver Repartos', icon: ClipboardList },
@@ -51,7 +53,7 @@ function MainNavigation() {
   const toggleSubMenu = (label: string) => {
     setOpenSubMenus(prev => ({ ...prev, [label]: !prev[label] }));
   };
-  
+
   React.useEffect(() => {
     // Collapse submenus when main sidebar collapses, unless on mobile where it's an overlay
     if (!open && !isMobile) {
@@ -74,9 +76,9 @@ function MainNavigation() {
             <SidebarMenuItem key={item.label} className="flex flex-col items-start">
               <SidebarMenuButton
                 onClick={() => toggleSubMenu(item.label)}
-                isActive={isActiveParent}
+                isActive={!!isActiveParent}
                 className="w-full"
-                tooltip={open ? undefined : item.label} 
+                tooltip={open ? undefined : item.label}
               >
                 <Icon />
                 <span>{item.label}</span>
@@ -88,8 +90,8 @@ function MainNavigation() {
                      const SubIcon = subItem.icon;
                      return (
                         <SidebarMenuSubItem key={subItem.href}>
-                        <SidebarMenuSubButton 
-                            asChild 
+                        <SidebarMenuSubButton
+                            asChild
                             isActive={pathname === subItem.href || (subItem.href !== "/" && pathname.startsWith(subItem.href))}
                         >
                             <Link href={subItem.href}>
@@ -111,7 +113,7 @@ function MainNavigation() {
             <SidebarMenuButton
               asChild
               isActive={pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href))}
-              tooltip={open ? undefined : item.label} 
+              tooltip={open ? undefined : item.label}
             >
               <Link href={item.href}>
                 <Icon />
@@ -147,7 +149,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </Sidebar>
       <SidebarInset>
         <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-background/80 backdrop-blur-sm px-4 sm:px-6">
-          <div className="md:hidden"> 
+          <div className="md:hidden">
              <SidebarTrigger />
           </div>
           <div className="flex-1">
@@ -157,7 +159,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             {/* Theme toggle, User avatar etc. */}
           </div>
         </header>
-        <main className="flex-1 p-4 md:p-6 lg:p-8 h-[calc(100vh-3.5rem)] overflow-auto"> 
+        <main className="flex-1 p-4 md:p-6 lg:p-8 h-[calc(100vh-3.5rem)] overflow-auto">
           {children}
         </main>
       </SidebarInset>
