@@ -16,15 +16,12 @@ import {
   SidebarMenuButton,
   SidebarInset,
   useSidebar,
-  SidebarMenuSub,
-  SidebarMenuSubButton,
-  SidebarMenuSubItem,
 } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
-import { Home, Building2, Users, Truck, Package, ClipboardList, MapIcon, Settings, ShipWheel, Route, ClipboardPlus, Layers } from 'lucide-react';
+import { Home, Building2, Users, Truck, Package, ClipboardList, MapIcon, Settings, ShipWheel, Route, ClipboardPlus, Layers, ChevronRight } from 'lucide-react';
 import { Separator } from './ui/separator';
-import { cn } from "@/lib/utils";
-import { SheetTitle } from '@/components/ui/sheet'; // Added import for SheetTitle
+import { cn } from "@/lib/utils"; // Ensured cn is imported
+// Removed SheetTitle import from here as it's handled by ui/sidebar.tsx for mobile
 
 const navItems = [
   { href: '/', label: 'Inicio', icon: Home },
@@ -34,7 +31,7 @@ const navItems = [
   { href: '/envios', label: 'Envíos', icon: Package },
   {
     label: 'Repartos',
-    icon: ClipboardPlus,
+    icon: ClipboardList,
     subItems: [
       { href: '/repartos', label: 'Ver Repartos', icon: ClipboardList },
       { href: '/repartos/nuevo', label: 'Nuevo Reparto Individual', icon: ClipboardPlus },
@@ -56,6 +53,7 @@ function MainNavigation() {
   };
 
   React.useEffect(() => {
+    // Close submenus when main sidebar collapses on desktop
     if (!open && !isMobile) {
       setOpenSubMenus({});
     }
@@ -85,24 +83,25 @@ function MainNavigation() {
                 <ChevronRight className={cn("ml-auto h-4 w-4 transform transition-transform duration-200", openSubMenus[item.label] && "rotate-90", (open && isMobile && openSubMenus[item.label]) && "rotate-90")} />
               </SidebarMenuButton>
               {(openSubMenus[item.label] || (open && !isMobile && isActiveParent)) && (
-                 <SidebarMenuSub className={cn("ml-0 pl-0 mt-1 w-full", !open && !isMobile && "!hidden")}>
+                 <SidebarMenu className={cn("ml-0 pl-0 mt-1 w-full", !open && !isMobile && "!hidden")}>
                   {item.subItems.map(subItem => {
                      const SubIcon = subItem.icon;
                      return (
-                        <SidebarMenuSubItem key={subItem.href}>
-                        <SidebarMenuSubButton
+                        <SidebarMenuItem key={subItem.href}>
+                        <SidebarMenuButton
                             asChild
                             isActive={pathname === subItem.href || (subItem.href !== "/" && pathname.startsWith(subItem.href))}
+                            className="pl-7" 
                         >
                             <Link href={subItem.href}>
                                 <SubIcon />
                                 <span>{subItem.label}</span>
                             </Link>
-                        </SidebarMenuSubButton>
-                        </SidebarMenuSubItem>
+                        </SidebarMenuButton>
+                        </SidebarMenuItem>
                      )
                   })}
-                </SidebarMenuSub>
+                </SidebarMenu>
               )}
             </SidebarMenuItem>
           );
@@ -132,8 +131,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <SidebarProvider defaultOpen={true}>
       <Sidebar>
         <SidebarHeader className="p-4">
-          {/* Visually hidden title for accessibility when Sidebar becomes a Sheet on mobile */}
-          <SheetTitle className="sr-only">Menú Principal Rumbos Envíos</SheetTitle>
+          {/* Visual title elements are here */}
           <div className="flex items-center gap-2">
             <ShipWheel className="h-8 w-8 text-primary" />
             <div className="flex flex-col">
@@ -168,12 +166,3 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     </SidebarProvider>
   );
 }
-
-// Helper icon, can be moved to a utility file if used elsewhere
-const ChevronRight = (props: React.ComponentProps<"svg">) => (
-  <svg viewBox="0 0 16 16" fill="currentColor" {...props}>
-    <path d="M8.22 2.97a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L11.94 8 8.22 4.03a.75.75 0 0 1 0-1.06Z" />
-  </svg>
-);
-
-    

@@ -1,3 +1,4 @@
+
 "use client"
 
 import * as React from "react"
@@ -10,7 +11,7 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
-import { Sheet, SheetContent } from "@/components/ui/sheet"
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet" // Added SheetHeader, SheetTitle
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Tooltip,
@@ -206,6 +207,11 @@ const Sidebar = React.forwardRef<
             }
             side={side}
           >
+            {/* Accessible title for the sheet/dialog, rendered by Sheet itself */}
+            {/* The actual visual header and content are passed as children */}
+            <SheetHeader className="p-0 sr-only"> {/* Make header itself sr-only if title is all that's needed */}
+               <SheetTitle>Menú Principal</SheetTitle>
+            </SheetHeader>
             <div className="flex h-full w-full flex-col">{children}</div>
           </SheetContent>
         </Sheet>
@@ -350,20 +356,22 @@ const SidebarInput = React.forwardRef<
 })
 SidebarInput.displayName = "SidebarInput"
 
+// Updated SidebarHeader export from ui/sidebar.tsx
 const SidebarHeader = React.forwardRef<
   HTMLDivElement,
-  React.ComponentProps<"div">
+  React.HTMLAttributes<HTMLDivElement>
 >(({ className, ...props }, ref) => {
   return (
     <div
       ref={ref}
       data-sidebar="header"
-      className={cn("flex flex-col gap-2 p-2", className)}
+      className={cn("flex flex-col gap-2 p-2", className)} // p-2 matches original, was p-4 in app-shell
       {...props}
     />
   )
 })
 SidebarHeader.displayName = "SidebarHeader"
+
 
 const SidebarFooter = React.forwardRef<
   HTMLDivElement,
@@ -682,6 +690,7 @@ const SidebarMenuSkeleton = React.forwardRef<
 })
 SidebarMenuSkeleton.displayName = "SidebarMenuSkeleton"
 
+// Exporting SidebarMenuSub and related components for use in MainNavigation
 const SidebarMenuSub = React.forwardRef<
   HTMLUListElement,
   React.ComponentProps<"ul">
@@ -702,18 +711,18 @@ SidebarMenuSub.displayName = "SidebarMenuSub"
 const SidebarMenuSubItem = React.forwardRef<
   HTMLLIElement,
   React.ComponentProps<"li">
->(({ ...props }, ref) => <li ref={ref} {...props} />)
+>(({ ...props }, ref) => <li ref={ref} data-sidebar="menu-sub-item" {...props} />) // Added data-sidebar attribute
 SidebarMenuSubItem.displayName = "SidebarMenuSubItem"
 
 const SidebarMenuSubButton = React.forwardRef<
-  HTMLAnchorElement,
-  React.ComponentProps<"a"> & {
+  HTMLAnchorElement, // Changed to HTMLAnchorElement as it's typically used with Link
+  React.ComponentProps<"a"> & { // Changed to React.ComponentProps<"a">
     asChild?: boolean
     size?: "sm" | "md"
     isActive?: boolean
   }
 >(({ asChild = false, size = "md", isActive, className, ...props }, ref) => {
-  const Comp = asChild ? Slot : "a"
+  const Comp = asChild ? Slot : "a" // "a" for Link
 
   return (
     <Comp
@@ -734,6 +743,7 @@ const SidebarMenuSubButton = React.forwardRef<
   )
 })
 SidebarMenuSubButton.displayName = "SidebarMenuSubButton"
+
 
 export {
   Sidebar,
