@@ -2,11 +2,10 @@
 "use client";
 
 import * as React from 'react';
-// Removed local GoogleMapsLoader import
 import type { UnassignedEnvioListItem } from '@/lib/schemas';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, TruckIcon, PackageSearch, MapPin } from "lucide-react"; 
-import { getGoogleMapsApi } from '@/services/google-maps-service'; // Import the centralized loader
+import { Loader2 } from "lucide-react"; 
+import { getGoogleMapsApi } from '@/services/google-maps-service'; // Ensure this is the only way API is loaded
 
 interface MapaEnviosComponentProps {
   unassignedEnvios: UnassignedEnvioListItem[];
@@ -14,7 +13,7 @@ interface MapaEnviosComponentProps {
   selectedEnvioId?: string | null;
 }
 
-const API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+const API_KEY_COMPONENT = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY; // For component-level check
 const MAR_DEL_PLATA_CENTER = { lat: -38.00228, lng: -57.55754 };
 
 const UNASSIGNED_COLOR = '#FF5722'; // Deep Orange for unassigned
@@ -31,40 +30,43 @@ export function MapaEnviosComponent({
   const [markers, setMarkers] = React.useState<google.maps.Marker[]>([]);
   const [infoWindow, setInfoWindow] = React.useState<google.maps.InfoWindow | null>(null);
   const [isLoadingMap, setIsLoadingMap] = React.useState(true);
+  const [googleMaps, setGoogleMaps] = React.useState<typeof google | null>(null);
+
 
   React.useEffect(() => {
-    if (!API_KEY) {
+    if (!API_KEY_COMPONENT) {
       toast({ title: "Error de Configuración", description: "Falta la clave API de Google Maps.", variant: "destructive"});
       setIsLoadingMap(false);
       return;
     }
 
-    getGoogleMapsApi().then((google) => { // Use the centralized loader
+    getGoogleMapsApi().then((googleApi) => {
+      setGoogleMaps(googleApi); // Store the google object
       if (mapRef.current && !map) {
-        const newMap = new google.maps.Map(mapRef.current, {
+        const newMap = new googleApi.maps.Map(mapRef.current, {
           center: MAR_DEL_PLATA_CENTER,
           zoom: 12,
           mapId: 'RUMBOS_ENVIOS_ASIGNACION_MAP',
         });
         setMap(newMap);
-        setInfoWindow(new google.maps.InfoWindow());
+        setInfoWindow(new googleApi.maps.InfoWindow());
       }
       setIsLoadingMap(false);
     }).catch(e => {
-      console.error("Error loading Google Maps API:", e);
+      console.error("Error loading Google Maps API in MapaEnviosComponent:", e);
       toast({ title: "Error al cargar Mapa", description: "No se pudo inicializar Google Maps.", variant: "destructive"});
       setIsLoadingMap(false);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, toast]); // map and toast are stable
+  }, [map, toast]); // Removed API_KEY_COMPONENT as it's module level
 
 
   React.useEffect(() => {
-    if (!map || !google?.maps?.SymbolPath) return; // Ensure google.maps and SymbolPath are available
+    if (!map || !googleMaps?.maps?.SymbolPath || !unassignedEnvios) return;
 
     markers.forEach(marker => marker.setMap(null));
     const newMarkers: google.maps.Marker[] = [];
-    const bounds = new google.maps.LatLngBounds();
+    const bounds = new googleMaps.maps.LatLngBounds();
 
 
     unassignedEnvios.forEach(envio => {
@@ -74,12 +76,12 @@ export function MapaEnviosComponent({
         
         bounds.extend(position);
 
-        const marker = new google.maps.Marker({
+        const marker = new googleMaps.maps.Marker({
           position: position,
           map: map,
           title: `Envío ID: ${envio.id?.substring(0,8)}\nDestino: ${envio.direccion_destino}`,
           icon: {
-            path: google.maps.SymbolPath.CIRCLE, 
+            path: googleMaps.maps.SymbolPath.CIRCLE, 
             scale: isSelected ? 10 : 7, 
             fillColor: isSelected ? SELECTED_UNASSIGNED_COLOR : UNASSIGNED_COLOR,
             fillOpacity: 1,
@@ -122,9 +124,9 @@ export function MapaEnviosComponent({
     }
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, unassignedEnvios, onUnassignedEnvioSelect, infoWindow, selectedEnvioId]);
+  }, [map, googleMaps, unassignedEnvios, onUnassignedEnvioSelect, infoWindow, selectedEnvioId]);
 
-  if (isLoadingMap && API_KEY) {
+  if (isLoadingMap && API_KEY_COMPONENT) {
     return (
       <div className="w-full h-full flex justify-center items-center bg-muted/50 rounded-md">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -133,7 +135,7 @@ export function MapaEnviosComponent({
     );
   }
   
-  if (!API_KEY) {
+  if (!API_KEY_COMPONENT) {
      return (
       <div className="w-full h-full flex justify-center items-center bg-destructive/10 rounded-md p-4 text-center">
         <p className="text-destructive">La API Key de Google Maps no está configurada. El mapa no se puede mostrar.</p>

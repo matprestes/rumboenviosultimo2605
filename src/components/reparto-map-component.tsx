@@ -2,12 +2,10 @@
 "use client";
 
 import * as React from 'react';
-// Removed local Loader import
 import type { ParadaConDetalles, Empresa } from '@/lib/schemas';
 import { useToast } from '@/hooks/use-toast';
-import { cn } from '@/lib/utils'; 
-import { Loader2 } from 'lucide-react'; // Ensure Loader2 is imported for fallback
-import { getGoogleMapsApi } from '@/services/google-maps-service'; // Import the centralized loader
+import { Loader2 } from 'lucide-react'; 
+import { getGoogleMapsApi } from '@/services/google-maps-service'; // Ensure this is the only way API is loaded
 
 interface RepartoMapComponentProps {
   paradas: ParadaConDetalles[];
@@ -15,10 +13,9 @@ interface RepartoMapComponentProps {
   repartoId: string;
 }
 
-const API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+const API_KEY_COMPONENT = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY; // For component-level check
 const MAR_DEL_PLATA_CENTER = { lat: -38.00228, lng: -57.55754 };
 
-// Colors for markers
 const PICKUP_COLOR = '#1E88E5'; // Blue for Pickup
 const DELIVERY_COLOR = '#E53935'; // Red for Delivery
 const DEFAULT_MARKER_COLOR = '#757575'; // Grey for others or if type unknown
@@ -31,36 +28,37 @@ export function RepartoMapComponent({ paradas, empresaOrigen, repartoId }: Repar
   const [polyline, setPolyline] = React.useState<google.maps.Polyline | null>(null);
   const [infoWindow, setInfoWindow] = React.useState<google.maps.InfoWindow | null>(null);
   const [isLoadingMap, setIsLoadingMap] = React.useState(true);
+  const [googleMaps, setGoogleMaps] = React.useState<typeof google | null>(null);
 
   React.useEffect(() => {
-    if (!API_KEY) {
+    if (!API_KEY_COMPONENT) {
       toast({ title: "Error de Configuración", description: "Falta la clave API de Google Maps.", variant: "destructive"});
       setIsLoadingMap(false);
       return;
     }
 
-    getGoogleMapsApi().then((google) => { // Use the centralized loader
+    getGoogleMapsApi().then((googleApi) => {
+      setGoogleMaps(googleApi); // Store the google object
       if (mapRef.current && !map) {
-        const newMap = new google.maps.Map(mapRef.current, {
+        const newMap = new googleApi.maps.Map(mapRef.current, {
           center: MAR_DEL_PLATA_CENTER,
           zoom: 12,
           mapId: `REPARTO_MAP_${repartoId.substring(0,8)}`, 
         });
         setMap(newMap);
-        setInfoWindow(new google.maps.InfoWindow());
+        setInfoWindow(new googleApi.maps.InfoWindow());
       }
       setIsLoadingMap(false);
     }).catch(e => {
-      console.error("Error loading Google Maps API:", e);
+      console.error("Error loading Google Maps API in RepartoMapComponent:", e);
       toast({ title: "Error al cargar Mapa", description: "No se pudo inicializar Google Maps.", variant: "destructive"});
       setIsLoadingMap(false);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [repartoId]); 
+  }, [repartoId, toast, map]); // map added to deps
 
   React.useEffect(() => {
-    if (!map || !google?.maps?.SymbolPath ) { // Check for google.maps.SymbolPath
-      // Clear markers and polyline if map or paradas are not ready
+    if (!map || !googleMaps?.maps?.SymbolPath || !paradas ) { 
       markers.forEach(marker => marker.setMap(null));
       setMarkers([]);
       if (polyline) polyline.setMap(null);
@@ -73,7 +71,7 @@ export function RepartoMapComponent({ paradas, empresaOrigen, repartoId }: Repar
 
     const newMarkers: google.maps.Marker[] = [];
     const pathCoordinates: google.maps.LatLngLiteral[] = [];
-    const bounds = new google.maps.LatLngBounds();
+    const bounds = new googleMaps.maps.LatLngBounds();
 
     const sortedParadas = [...paradas].sort((a, b) => (a.orden_visita ?? Infinity) - (b.orden_visita ?? Infinity));
 
@@ -111,7 +109,7 @@ export function RepartoMapComponent({ paradas, empresaOrigen, repartoId }: Repar
         pathCoordinates.push(position);
         bounds.extend(position);
 
-        const marker = new google.maps.Marker({
+        const marker = new googleMaps.maps.Marker({
           position,
           map,
           label: {
@@ -121,7 +119,7 @@ export function RepartoMapComponent({ paradas, empresaOrigen, repartoId }: Repar
             fontWeight: "bold",
           },
           icon: {
-            path: google.maps.SymbolPath.CIRCLE,
+            path: googleMaps.maps.SymbolPath.CIRCLE,
             scale: 12,
             fillColor: markerColor,
             fillOpacity: 0.9,
@@ -144,7 +142,7 @@ export function RepartoMapComponent({ paradas, empresaOrigen, repartoId }: Repar
     setMarkers(newMarkers);
 
     if (pathCoordinates.length > 1) {
-      const newPolyline = new google.maps.Polyline({
+      const newPolyline = new googleMaps.maps.Polyline({
         path: pathCoordinates,
         geodesic: true,
         strokeColor: '#4285F4', 
@@ -163,15 +161,15 @@ export function RepartoMapComponent({ paradas, empresaOrigen, repartoId }: Repar
       if (newMarkers.length === 1 && map.getZoom() && map.getZoom() > 15) { 
         map.setZoom(15);
       }
-    } else if (newMarkers.length === 0 && map) { // Ensure map exists before setting center/zoom
+    } else if (newMarkers.length === 0 && map) {
        map.setCenter(MAR_DEL_PLATA_CENTER);
        map.setZoom(12);
     }
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, paradas, empresaOrigen, infoWindow]); // Removed google from deps as it's stable after load
+  }, [map, googleMaps, paradas, empresaOrigen, infoWindow]);
 
-  if (isLoadingMap && API_KEY) {
+  if (isLoadingMap && API_KEY_COMPONENT) {
     return (
       <div className="w-full h-full flex justify-center items-center bg-muted/50 rounded-md aspect-video">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -180,7 +178,7 @@ export function RepartoMapComponent({ paradas, empresaOrigen, repartoId }: Repar
     );
   }
   
-  if (!API_KEY) {
+  if (!API_KEY_COMPONENT) {
      return (
       <div className="w-full h-full flex justify-center items-center bg-destructive/10 rounded-md p-4 text-center aspect-video">
         <p className="text-destructive">La API Key de Google Maps no está configurada. El mapa no se puede mostrar.</p>
