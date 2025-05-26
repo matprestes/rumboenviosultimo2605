@@ -26,6 +26,7 @@ import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
 
 const ITEMS_PER_PAGE = 10;
+const ALL_FILTER_OPTION_VALUE = "_all_";
 
 export default function RepartosPage() {
   const { toast } = useToast();
@@ -89,8 +90,6 @@ export default function RepartosPage() {
 
 
   const handleApplyFilters = () => {
-    // Page will be reset by useEffect if currentPage becomes 1
-    // If currentPage is already 1, this just triggers fetch
     if(currentPage !== 1) handlePageChange(1); 
     else fetchRepartos(1);
   };
@@ -146,10 +145,13 @@ export default function RepartosPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><Filter size={20}/> Filtros de Repartos</CardTitle>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mt-4 items-end">
-            <Select value={repartidorFilter} onValueChange={setRepartidorFilter}>
+            <Select 
+              value={repartidorFilter || ALL_FILTER_OPTION_VALUE} 
+              onValueChange={(value) => setRepartidorFilter(value === ALL_FILTER_OPTION_VALUE ? '' : value)}
+            >
               <SelectTrigger><div className="flex items-center gap-1"><TruckIcon size={16}/> <SelectValue placeholder="Repartidor..." /></div></SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Todos</SelectItem>
+                <SelectItem value={ALL_FILTER_OPTION_VALUE}>Todos</SelectItem>
                 {repartidores.map(r => <SelectItem key={r.id} value={r.id!}>{r.nombre}</SelectItem>)}
               </SelectContent>
             </Select>
@@ -162,10 +164,13 @@ export default function RepartosPage() {
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={fechaFilter} onSelect={setFechaFilter} initialFocus locale={es}/></PopoverContent>
             </Popover>
-            <Select value={estadoFilter} onValueChange={(value) => setEstadoFilter(value as EstadoReparto | '')}>
+            <Select 
+              value={estadoFilter || ALL_FILTER_OPTION_VALUE} 
+              onValueChange={(value) => setEstadoFilter(value === ALL_FILTER_OPTION_VALUE ? '' : value as EstadoReparto | '')}
+            >
               <SelectTrigger><SelectValue placeholder="Estado..." /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Todos</SelectItem>
+                <SelectItem value={ALL_FILTER_OPTION_VALUE}>Todos</SelectItem>
                 {EstadoRepartoEnum.options.map(e => <SelectItem key={e} value={e}>{getEstadoRepartoDisplayName(e)}</SelectItem>)}
               </SelectContent>
             </Select>

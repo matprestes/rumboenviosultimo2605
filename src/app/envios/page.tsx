@@ -11,14 +11,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Package, PlusCircle, Loader2, Edit, Trash2, Search, Calendar as CalendarIcon } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-  // AlertDialogTrigger // Removed
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle
 } from "@/components/ui/alert-dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { getEnviosAction, deleteEnvioAction } from '@/actions/envio-actions';
 import type { EnvioConDetalles, EstadoEnvio } from '@/lib/schemas';
-import { EstadoEnvioEnum } from '@/lib/schemas'; // Import enum for values
+import { EstadoEnvioEnum } from '@/lib/schemas';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { format, parseISO } from 'date-fns';
@@ -27,6 +26,7 @@ import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 
 const ITEMS_PER_PAGE = 10;
+const ALL_FILTER_OPTION_VALUE = "_all_";
 
 export default function EnviosPage() {
   const { toast } = useToast();
@@ -40,7 +40,6 @@ export default function EnviosPage() {
   const [isDeleting, setIsDeleting] = React.useState(false);
   const [envioToDelete, setEnvioToDelete] = React.useState<EnvioConDetalles | null>(null);
 
-  // Filter states
   const [searchTerm, setSearchTerm] = React.useState(searchParams.get('search') || '');
   const [estadoFilter, setEstadoFilter] = React.useState<EstadoEnvio | ''>(searchParams.get('estado') as EstadoEnvio || '');
   const [fechaDesdeFilter, setFechaDesdeFilter] = React.useState<Date | undefined>(
@@ -80,7 +79,6 @@ export default function EnviosPage() {
     if (fechaHastaFilter) params.set('hasta', format(fechaHastaFilter, 'yyyy-MM-dd'));
     if (currentPage > 1) params.set('page', currentPage.toString());
     
-    // Only push if params actually changed to avoid loop with fetchEnvios dependency
     if (params.toString() !== searchParams.toString()) {
       router.push(`${pathname}?${params.toString()}`, { scroll: false });
     }
@@ -90,7 +88,6 @@ export default function EnviosPage() {
 
   const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(event.target.value);
-    // Reset page to 1 on new search
     const params = new URLSearchParams(searchParams);
     params.delete('page');
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
@@ -102,7 +99,6 @@ export default function EnviosPage() {
     if (estadoFilter) params.set('estado', estadoFilter);
     if (fechaDesdeFilter) params.set('desde', format(fechaDesdeFilter, 'yyyy-MM-dd'));
     if (fechaHastaFilter) params.set('hasta', format(fechaHastaFilter, 'yyyy-MM-dd'));
-    // Do not set page here, let useEffect handle it based on currentPage state
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
   };
 
@@ -119,7 +115,7 @@ export default function EnviosPage() {
     const { success, error } = await deleteEnvioAction(envioToDelete.id);
     if (success) {
       toast({ title: "Envío Eliminado", description: `El envío ID ${envioToDelete.id.substring(0,8)}... ha sido eliminado.` });
-      fetchEnvios(currentPage); // Refresh list
+      fetchEnvios(currentPage); 
     } else {
       toast({ title: "Error al Eliminar", description: error, variant: "destructive" });
     }
@@ -167,10 +163,13 @@ export default function EnviosPage() {
                 className="pl-8 w-full"
               />
             </div>
-            <Select value={estadoFilter} onValueChange={(value) => setEstadoFilter(value as EstadoEnvio | '')}>
+            <Select 
+              value={estadoFilter || ALL_FILTER_OPTION_VALUE} 
+              onValueChange={(value) => setEstadoFilter(value === ALL_FILTER_OPTION_VALUE ? '' : value as EstadoEnvio | '')}
+            >
               <SelectTrigger><SelectValue placeholder="Filtrar por estado..." /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Todos los Estados</SelectItem>
+                <SelectItem value={ALL_FILTER_OPTION_VALUE}>Todos los Estados</SelectItem>
                 {(Object.values(EstadoEnvioEnum.Values) as EstadoEnvio[]).map(estado => (
                   <SelectItem key={estado} value={estado}>{getEstadoDisplayName(estado)}</SelectItem>
                 ))}
@@ -256,7 +255,6 @@ export default function EnviosPage() {
                   ))}
                 </TableBody>
               </Table>
-              {/* Pagination Controls */}
               {totalPages > 1 && (
                 <div className="flex justify-center items-center space-x-2 mt-6">
                   <Button onClick={() => handlePageChange(currentPage - 1)} disabled={currentPage === 1 || isLoading}>Anterior</Button>
