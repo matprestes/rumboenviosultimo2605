@@ -3,42 +3,40 @@
 
 import * as React from 'react';
 import { Loader } from '@googlemaps/js-api-loader';
-import type { EnvioExtendido } from '@/app/mapa-envios/page'; // Using type from page
+import type { UnassignedEnvioListItem, ActiveRepartoListItem } from '@/lib/schemas';
 import { useToast } from '@/hooks/use-toast';
+import { TruckIcon, PackageQuestion, MapPin } from 'lucide-react'; // Added PackageQuestion
 
 interface MapaEnviosComponentProps {
-  envios: EnvioExtendido[];
+  unassignedEnvios: UnassignedEnvioListItem[];
+  // activeRepartos: ActiveRepartoListItem[]; // We might not display active repartos directly on this map view for now
+  onUnassignedEnvioSelect: (envio: UnassignedEnvioListItem) => void;
+  selectedEnvioId?: string | null;
 }
 
 const API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-
 const MAR_DEL_PLATA_CENTER = { lat: -38.00228, lng: -57.55754 };
 
 const loader = new Loader({
   apiKey: API_KEY || '',
   version: 'weekly',
-  libraries: ['marker', 'geometry', 'places'], // Added 'marker' for advanced markers if needed
+  libraries: ['marker', 'geometry', 'places'],
 });
 
-const getStatusColor = (status: EnvioExtendido['estado']): string => {
-  switch (status) {
-    case 'pendiente_asignacion': return '#FFC107'; // Amarillo
-    case 'asignado': return '#2196F3';             // Azul
-    case 'en_camino': return '#FF9800';            // Naranja
-    case 'entregado': return '#4CAF50';             // Verde
-    case 'no_entregado': return '#F44336';         // Rojo
-    case 'cancelado': return '#9E9E9E';            // Gris
-    default: return '#757575';                     // Gris Oscuro por defecto
-  }
-};
+const UNASSIGNED_COLOR = '#FF5722'; // Deep Orange for unassigned
+const SELECTED_UNASSIGNED_COLOR = '#FFC107'; // Amber for selected unassigned
 
-export function MapaEnviosComponent({ envios }: MapaEnviosComponentProps) {
+export function MapaEnviosComponent({ 
+  unassignedEnvios, 
+  onUnassignedEnvioSelect,
+  selectedEnvioId
+}: MapaEnviosComponentProps) {
   const mapRef = React.useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const [map, setMap] = React.useState<google.maps.Map | null>(null);
   const [markers, setMarkers] = React.useState<google.maps.Marker[]>([]);
   const [infoWindow, setInfoWindow] = React.useState<google.maps.InfoWindow | null>(null);
-   const [isLoadingMap, setIsLoadingMap] = React.useState(true);
+  const [isLoadingMap, setIsLoadingMap] = React.useState(true);
 
   React.useEffect(() => {
     if (!API_KEY) {
@@ -52,7 +50,7 @@ export function MapaEnviosComponent({ envios }: MapaEnviosComponentProps) {
         const newMap = new google.maps.Map(mapRef.current, {
           center: MAR_DEL_PLATA_CENTER,
           zoom: 12,
-          mapId: 'RUMBOS_ENVIOS_MAP', // Optional: for cloud-based map styling
+          mapId: 'RUMBOS_ENVIOS_ASIGNACION_MAP',
         });
         setMap(newMap);
         setInfoWindow(new google.maps.InfoWindow());
@@ -67,42 +65,40 @@ export function MapaEnviosComponent({ envios }: MapaEnviosComponentProps) {
 
 
   React.useEffect(() => {
-    if (!map || !google.maps) { // Ensure google.maps is available
-        if (map && envios.length === 0 && markers.length > 0) { // Clear markers if envios become empty
-            markers.forEach(marker => marker.setMap(null));
-            setMarkers([]);
-        }
-        return;
-    }
+    if (!map || !google.maps) return;
 
-    // Clear existing markers
     markers.forEach(marker => marker.setMap(null));
     const newMarkers: google.maps.Marker[] = [];
 
-    envios.forEach(envio => {
+    unassignedEnvios.forEach(envio => {
       if (envio.latitud_destino && envio.longitud_destino) {
+        const isSelected = envio.id === selectedEnvioId;
         const marker = new google.maps.Marker({
           position: { lat: envio.latitud_destino, lng: envio.longitud_destino },
           map: map,
-          title: `Envío ID: ${envio.id?.substring(0,8)}\nDestino: ${envio.direccion_destino}\nEstado: ${envio.estado}`,
+          title: `Envío ID: ${envio.id?.substring(0,8)}\nDestino: ${envio.direccion_destino}`,
           icon: {
-            path: google.maps.SymbolPath.CIRCLE,
-            scale: 8,
-            fillColor: getStatusColor(envio.estado),
+            path: google.maps.SymbolPath.CIRCLE, // Default to circle
+            scale: isSelected ? 10 : 7, // Larger if selected
+            fillColor: isSelected ? SELECTED_UNASSIGNED_COLOR : UNASSIGNED_COLOR,
             fillOpacity: 1,
-            strokeWeight: 1,
-            strokeColor: '#ffffff' // White border for better visibility
+            strokeWeight: 1.5,
+            strokeColor: '#ffffff'
           },
+          zIndex: isSelected ? 100 : 1,
         });
 
         marker.addListener('click', () => {
+          onUnassignedEnvioSelect(envio);
           if (infoWindow) {
+            const clienteInfo = envio.clientes ? `${envio.clientes.nombre} ${envio.clientes.apellido}` : envio.cliente_temporal_nombre;
             const content = `
-              <div style="font-family: sans-serif; padding: 5px;">
-                <h4 style="margin:0 0 5px 0; font-size: 1em;">Envío ID: ${envio.id?.substring(0,8)}</h4>
+              <div style="font-family: sans-serif; padding: 5px; max-width: 250px;">
+                <h4 style="margin:0 0 5px 0; font-size: 1em; color: ${UNASSIGNED_COLOR};">Envío No Asignado</h4>
+                <p style="margin:0 0 3px 0; font-size: 0.9em;"><strong>ID:</strong> ${envio.id?.substring(0,8)}...</p>
                 <p style="margin:0 0 3px 0; font-size: 0.9em;"><strong>Destino:</strong> ${envio.direccion_destino}</p>
-                <p style="margin:0; font-size: 0.9em;"><strong>Estado:</strong> ${envio.estado || 'N/A'}</p>
-                ${envio.cliente_temporal_nombre ? `<p style="margin:3px 0 0 0; font-size: 0.9em;"><strong>Cliente:</strong> ${envio.cliente_temporal_nombre}</p>` : ''}
+                ${clienteInfo ? `<p style="margin:0 0 3px 0; font-size: 0.9em;"><strong>Cliente:</strong> ${clienteInfo}</p>` : ''}
+                 <p style="margin:0 0 3px 0; font-size: 0.9em;"><strong>Origen:</strong> ${envio.direccion_origen}</p>
               </div>
             `;
             infoWindow.setContent(content);
@@ -114,7 +110,7 @@ export function MapaEnviosComponent({ envios }: MapaEnviosComponentProps) {
     });
     setMarkers(newMarkers);
 
-  }, [map, envios, infoWindow]); // Add infoWindow to dependencies
+  }, [map, unassignedEnvios, onUnassignedEnvioSelect, infoWindow, selectedEnvioId]);
 
   if (isLoadingMap && API_KEY) {
     return (

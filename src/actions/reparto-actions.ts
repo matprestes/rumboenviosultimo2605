@@ -2,10 +2,10 @@
 "use server";
 
 import { supabase } from '@/lib/supabase/client';
-import type { Reparto, ParadaReparto, RepartoConDetalles, EnvioConDetalles, Repartidor, Empresa, RepartoFormValues, RepartoLoteFormValues } from '@/lib/schemas';
-import { RepartoSchema, RepartoLoteFormSchema } from '@/lib/schemas'; // Added RepartoLoteFormSchema
+import type { Reparto, ParadaReparto, RepartoConDetalles, EnvioConDetalles, Repartidor, Empresa, Cliente, RepartoFormValues, RepartoLoteFormValues, Envio, UnassignedEnvioListItem, ActiveRepartoListItem } from '@/lib/schemas';
+import { RepartoSchema, RepartoLoteFormSchema } from '@/lib/schemas';
 import { revalidatePath } from 'next/cache';
-import { getTiposPaqueteForSelect } from './envio-actions'; // Assuming this is a shared helper
+import { getTiposPaqueteForSelect } from './envio-actions';
 
 // Helper function to get user ID (placeholder for actual auth integration)
 async function getUserId() {
@@ -30,7 +30,7 @@ export async function getRepartidoresForSelectAction(): Promise<Pick<Repartidor,
 export async function getEmpresasForSelectAction(): Promise<Pick<Empresa, 'id' | 'nombre' | 'direccion' | 'latitud' | 'longitud'>[]> {
     const { data, error } = await supabase
       .from('empresas')
-      .select('id, nombre, direccion, latitud, longitud') // Added address and coords for lote
+      .select('id, nombre, direccion, latitud, longitud')
       .eq('estado', 'activo')
       .order('nombre');
     if (error) {
@@ -201,7 +201,7 @@ export async function createRepartoLoteAction(
   }
 
   // 2. Fetch Default Tipo Paquete
-  const tiposPaquete = await getTiposPaqueteForSelect(); // Reuse existing action
+  const tiposPaquete = await getTiposPaqueteForSelect();
   if (tiposPaquete.length === 0) {
     return { success: false, error: "No se encontraron tipos de paquete. Configure al menos uno." };
   }
@@ -224,7 +224,7 @@ export async function createRepartoLoteAction(
     }
 
     const newEnvioData: Omit<Envio, 'id' | 'created_at' | 'updated_at'> = {
-      remitente_cliente_id: null, // Origin is the empresa
+      remitente_cliente_id: null,
       empresa_origen_id: empresaData.id,
       direccion_origen: empresaData.direccion,
       latitud_origen: empresaData.latitud,
@@ -237,11 +237,10 @@ export async function createRepartoLoteAction(
       tipo_paquete_id: defaultTipoPaqueteId,
       tipo_servicio_id: asignacion.tipo_servicio_id,
       precio: asignacion.precio,
-      estado: 'asignado', // Will be part of this reparto immediately
+      estado: 'asignado', 
       repartidor_asignado_id: repartidor_id,
       notas_conductor: asignacion.notas_envio,
       user_id: currentUserId,
-      // Fields not relevant for this flow or set to default
       cliente_temporal_nombre: null,
       cliente_temporal_telefono: null,
       empresa_destino_id: null,
@@ -281,7 +280,6 @@ export async function createRepartoLoteAction(
     .single();
 
   if (repartoError || !newReparto) {
-    // Attempt to clean up created envios if reparto creation fails
     const idsToDelete = createdEnvios.map(e => e.id).filter(id => !!id);
     if (idsToDelete.length > 0) await supabase.from('envios').delete().in('id', idsToDelete);
     return { success: false, error: `Error creando el reparto: ${repartoError?.message}` };
@@ -290,22 +288,20 @@ export async function createRepartoLoteAction(
   // 5. Create Paradas
   const paradasToInsert: Omit<ParadaReparto, 'id' | 'created_at' | 'updated_at' | 'user_id'>[] = [];
 
-  // Parada de Retiro en Empresa
   paradasToInsert.push({
     reparto_id: newReparto.id,
-    envio_id: null, // No specific envío for pickup stop
+    envio_id: null, 
     descripcion_parada: `Retiro en ${empresaData.nombre} (${empresaData.direccion})`,
     orden_visita: 1, 
     estado_parada: 'asignado', 
   });
 
-  // Paradas de Entrega para cada envío creado
   createdEnvios.forEach((envio, index) => {
     if (envio.id) {
       paradasToInsert.push({
         reparto_id: newReparto.id,
         envio_id: envio.id,
-        orden_visita: index + 2, // Start after empresa pickup
+        orden_visita: index + 2, 
         estado_parada: 'asignado',
       });
     }
@@ -314,7 +310,6 @@ export async function createRepartoLoteAction(
   const { error: paradasError } = await supabase.from('paradas_reparto').insert(paradasToInsert);
 
   if (paradasError) {
-    // Attempt to clean up reparto and envios
     const idsToDelete = createdEnvios.map(e => e.id).filter(id => !!id);
     if (idsToDelete.length > 0) await supabase.from('envios').delete().in('id', idsToDelete);
     await supabase.from('repartos').delete().eq('id', newReparto.id);
@@ -377,7 +372,7 @@ export async function getRepartoByIdAction(id: string): Promise<{ reparto?: Repa
     .select(`
       *,
       repartidores (id, nombre),
-      empresas:empresa_asociada_id (id, nombre),
+      empresas:empresa_asociada_id (id, nombre, latitud, longitud, direccion),
       paradas_reparto (
         *,
         envios (
@@ -424,7 +419,7 @@ export async function updateRepartoEstadoAction(id: string, estado: Reparto['est
 export async function updateParadaEstadoAction(
   paradaId: string, 
   nuevoEstadoParada: ParadaReparto['estado_parada'],
-  envioId: string | null // EnvioId can be null for non-delivery stops
+  envioId: string | null 
 ): Promise<{ success: boolean; error?: string }> {
   const currentUserId = await getUserId();
   
@@ -496,7 +491,7 @@ export async function deleteRepartoAction(id: string): Promise<{ success: boolea
       return { success: false, error: `Error al obtener paradas: ${paradasError.message}` };
     }
 
-    const envioIds = paradas.map(p => p.envio_id).filter(id => id !== null); // Filter out null envio_ids
+    const envioIds = paradas.map(p => p.envio_id).filter(id => id !== null); 
 
     const { error: deleteParadasError } = await supabase
       .from('paradas_reparto')
@@ -532,4 +527,127 @@ export async function deleteRepartoAction(id: string): Promise<{ success: boolea
     revalidatePath('/repartos');
     revalidatePath('/envios');
     return { success: true };
+}
+
+// --- Actions for MapaEnviosPage ---
+export async function getUnassignedEnviosForMapAction(): Promise<UnassignedEnvioListItem[]> {
+  const { data, error } = await supabase
+    .from('envios')
+    .select(`
+      id,
+      direccion_origen, latitud_origen, longitud_origen,
+      direccion_destino, latitud_destino, longitud_destino,
+      estado,
+      cliente_temporal_nombre,
+      clientes:remitente_cliente_id (nombre, apellido)
+    `)
+    .eq('estado', 'pendiente_asignacion')
+    .not('latitud_destino', 'is', null)
+    .not('longitud_destino', 'is', null);
+
+  if (error) {
+    console.error("Error fetching unassigned envios for map:", error);
+    return [];
+  }
+  return data as UnassignedEnvioListItem[];
+}
+
+export async function getActiveRepartosWithDetailsAction(): Promise<ActiveRepartoListItem[]> {
+  const { data, error } = await supabase
+    .from('repartos')
+    .select(`
+      id, fecha_reparto, estado, empresa_asociada_id,
+      repartidores (nombre),
+      empresas:empresa_asociada_id (nombre, latitud, longitud),
+      paradas_reparto (
+        orden_visita,
+        envios (latitud_destino, longitud_destino, direccion_destino)
+      )
+    `)
+    .in('estado', ['planificado', 'en_curso'])
+    .order('fecha_reparto', { ascending: true });
+
+  if (error) {
+    console.error("Error fetching active repartos for map:", error);
+    return [];
+  }
+  // Ensure paradas_reparto is always an array, even if null from DB
+  return (data?.map(reparto => ({
+    ...reparto,
+    paradas: reparto.paradas_reparto || [],
+  })) || []) as ActiveRepartoListItem[];
+}
+
+
+export async function assignEnvioToRepartoAction(
+  envioId: string,
+  repartoId: string
+): Promise<{ success: boolean; error?: string }> {
+  const currentUserId = await getUserId();
+
+  // 1. Fetch the reparto to check its status and get repartidor_id
+  const { data: repartoData, error: repartoFetchError } = await supabase
+    .from('repartos')
+    .select('estado, repartidor_id')
+    .eq('id', repartoId)
+    .single();
+
+  if (repartoFetchError || !repartoData) {
+    return { success: false, error: "Reparto no encontrado o error al obtenerlo." };
+  }
+
+  if (repartoData.estado === 'completado' || repartoData.estado === 'cancelado') {
+    return { success: false, error: `El reparto ya está ${repartoData.estado} y no puede modificarse.` };
+  }
+
+  // 2. Determine the next orden_visita for the new parada
+  const { data: maxOrdenData, error: maxOrdenError } = await supabase
+    .from('paradas_reparto')
+    .select('orden_visita')
+    .eq('reparto_id', repartoId)
+    .order('orden_visita', { ascending: false })
+    .limit(1)
+    .single();
+
+  if (maxOrdenError && maxOrdenError.code !== 'PGRST116') { // PGRST116: "Fetched result contains 0 rows" - okay if no paradas yet
+    return { success: false, error: "Error al determinar el orden de la parada." };
+  }
+  const nextOrdenVisita = (maxOrdenData?.orden_visita || 0) + 1;
+
+  // 3. Create the new parada_reparto record
+  const { error: paradaInsertError } = await supabase
+    .from('paradas_reparto')
+    .insert({
+      reparto_id: repartoId,
+      envio_id: envioId,
+      orden_visita: nextOrdenVisita,
+      estado_parada: 'asignado', // Default estado for a new parada
+      user_id: currentUserId,
+    });
+
+  if (paradaInsertError) {
+    return { success: false, error: `Error al crear la parada: ${paradaInsertError.message}` };
+  }
+
+  // 4. Update the envio's estado and repartidor_asignado_id
+  const { error: envioUpdateError } = await supabase
+    .from('envios')
+    .update({
+      estado: 'asignado',
+      repartidor_asignado_id: repartoData.repartidor_id,
+      updated_at: new Date().toISOString(),
+      user_id: currentUserId
+    })
+    .eq('id', envioId);
+
+  if (envioUpdateError) {
+    // Potentially roll back parada creation if critical, or log and notify
+    return { success: false, error: `Parada creada, pero error al actualizar el envío: ${envioUpdateError.message}` };
+  }
+
+  revalidatePath('/mapa-envios');
+  revalidatePath('/envios');
+  revalidatePath(`/repartos/${repartoId}`);
+  revalidatePath('/repartos'); 
+  return { success: true };
 }
