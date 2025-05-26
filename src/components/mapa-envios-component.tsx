@@ -2,14 +2,13 @@
 "use client";
 
 import * as React from 'react';
-import { Loader } from '@googlemaps/js-api-loader';
-import type { UnassignedEnvioListItem, ActiveRepartoListItem } from '@/lib/schemas';
+import { Loader as GoogleMapsLoader } from '@googlemaps/js-api-loader'; // Renamed to avoid conflict
+import type { UnassignedEnvioListItem } from '@/lib/schemas';
 import { useToast } from '@/hooks/use-toast';
-import { TruckIcon, PackageQuestion, MapPin } from 'lucide-react'; // Added PackageQuestion
+import { Loader2, TruckIcon, PackageQuestion, MapPin } from 'lucide-react'; // Added Loader2
 
 interface MapaEnviosComponentProps {
   unassignedEnvios: UnassignedEnvioListItem[];
-  // activeRepartos: ActiveRepartoListItem[]; // We might not display active repartos directly on this map view for now
   onUnassignedEnvioSelect: (envio: UnassignedEnvioListItem) => void;
   selectedEnvioId?: string | null;
 }
@@ -17,7 +16,7 @@ interface MapaEnviosComponentProps {
 const API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 const MAR_DEL_PLATA_CENTER = { lat: -38.00228, lng: -57.55754 };
 
-const loader = new Loader({
+const loader = new GoogleMapsLoader({ // Use renamed import
   apiKey: API_KEY || '',
   version: 'weekly',
   libraries: ['marker', 'geometry', 'places'],
@@ -69,17 +68,23 @@ export function MapaEnviosComponent({
 
     markers.forEach(marker => marker.setMap(null));
     const newMarkers: google.maps.Marker[] = [];
+    const bounds = new google.maps.LatLngBounds();
+
 
     unassignedEnvios.forEach(envio => {
       if (envio.latitud_destino && envio.longitud_destino) {
         const isSelected = envio.id === selectedEnvioId;
+        const position = { lat: envio.latitud_destino, lng: envio.longitud_destino };
+        
+        bounds.extend(position);
+
         const marker = new google.maps.Marker({
-          position: { lat: envio.latitud_destino, lng: envio.longitud_destino },
+          position: position,
           map: map,
           title: `Envío ID: ${envio.id?.substring(0,8)}\nDestino: ${envio.direccion_destino}`,
           icon: {
-            path: google.maps.SymbolPath.CIRCLE, // Default to circle
-            scale: isSelected ? 10 : 7, // Larger if selected
+            path: google.maps.SymbolPath.CIRCLE, 
+            scale: isSelected ? 10 : 7, 
             fillColor: isSelected ? SELECTED_UNASSIGNED_COLOR : UNASSIGNED_COLOR,
             fillOpacity: 1,
             strokeWeight: 1.5,
@@ -109,6 +114,17 @@ export function MapaEnviosComponent({
       }
     });
     setMarkers(newMarkers);
+
+    if (newMarkers.length > 0 && !bounds.isEmpty()) {
+        map.fitBounds(bounds);
+         if (newMarkers.length === 1 && map.getZoom() && map.getZoom() > 15) { 
+            map.setZoom(15);
+        }
+    } else if (newMarkers.length === 0) {
+       map.setCenter(MAR_DEL_PLATA_CENTER);
+       map.setZoom(12);
+    }
+
 
   }, [map, unassignedEnvios, onUnassignedEnvioSelect, infoWindow, selectedEnvioId]);
 
