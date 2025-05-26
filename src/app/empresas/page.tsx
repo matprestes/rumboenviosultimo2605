@@ -1,16 +1,59 @@
 
+"use client";
+
+import * as React from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Building2, PlusCircle } from "lucide-react";
-// import { EmpresaForm } from "@/components/forms/empresa-form"; // Example import
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Building2, PlusCircle, Loader2 } from "lucide-react";
+import { EmpresaForm } from "@/components/forms/empresa-form";
+import type { EmpresaFormValues } from '@/lib/schemas';
+import { supabase } from '@/lib/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
 export default function EmpresasPage() {
-  // const handleEmpresaSubmit = async (data: any) => { // Replace 'any' with EmpresaFormValues
-  //   console.log("Empresa data:", data);
-  //   // Here you would call your Supabase client to save the data
-  //   // await supabase.from('empresas').insert([data]);
-  //   // Add error handling and success notifications
-  // };
+  const { toast } = useToast();
+  const [isDialogOpen, setIsDialogOpen] = React.useState(false);
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
+
+  const handleEmpresaSubmit = async (data: EmpresaFormValues & { latitud?: number | null; longitud?: number | null }) => {
+    setIsSubmitting(true);
+    try {
+      const { error } = await supabase.from('empresas').insert([
+        {
+          nombre: data.nombre,
+          direccion: data.direccion,
+          latitud: data.latitud,
+          longitud: data.longitud,
+          telefono: data.telefono,
+          email: data.email,
+          notas: data.notas,
+          estado: data.estado,
+        }
+      ]);
+
+      if (error) {
+        throw error;
+      }
+
+      toast({
+        title: "Empresa Creada",
+        description: `La empresa "${data.nombre}" ha sido creada exitosamente.`,
+        variant: "default",
+      });
+      setIsDialogOpen(false); // Close dialog on success
+      // Here you would typically refresh the list of empresas
+    } catch (error: any) {
+      console.error("Error creating empresa:", error);
+      toast({
+        title: "Error al Crear Empresa",
+        description: error.message || "Ocurrió un error inesperado.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -24,10 +67,32 @@ export default function EmpresasPage() {
             Administra las empresas asociadas a Rumbos Envíos.
           </p>
         </div>
-        <Button> {/* This button would typically open a Dialog with the EmpresaForm */}
-          <PlusCircle className="mr-2 h-4 w-4" />
-          Nueva Empresa
-        </Button>
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <DialogTrigger asChild>
+            <Button>
+              <PlusCircle className="mr-2 h-4 w-4" />
+              Nueva Empresa
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[625px]">
+            <DialogHeader>
+              <DialogTitle>Crear Nueva Empresa</DialogTitle>
+              <DialogDescription>
+                Complete los detalles de la nueva empresa. Haga clic en guardar cuando haya terminado.
+              </DialogDescription>
+            </DialogHeader>
+            <EmpresaForm 
+              onSubmit={handleEmpresaSubmit} 
+              isSubmitting={isSubmitting} 
+              submitButtonText="Guardar Empresa"
+            />
+             <DialogFooter>
+                <Button variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>
+                    Cancelar
+                </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </header>
       
       <Card>
@@ -35,8 +100,6 @@ export default function EmpresasPage() {
           <CardTitle>Listado de Empresas</CardTitle>
           <CardDescription>
             Aquí podrás ver, crear, editar y eliminar empresas.
-            {/* Example usage of the form, likely within a Dialog or on a separate page */}
-            {/* <EmpresaForm onSubmit={handleEmpresaSubmit} /> */}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -44,9 +107,6 @@ export default function EmpresasPage() {
             <Building2 className="w-16 h-16 text-muted-foreground mb-4" />
             <p className="text-muted-foreground">
               El listado de empresas se implementará aquí.
-            </p>
-            <p className="text-sm text-muted-foreground">
-              (CRUD con nombre, dirección, geocodificación, teléfono, email, notas, estado)
             </p>
           </div>
         </CardContent>
