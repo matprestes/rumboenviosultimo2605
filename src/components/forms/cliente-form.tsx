@@ -1,10 +1,10 @@
 
 "use client";
 
-import * as React from 'react'; // Changed from type-only import
+import * as React from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { ClienteSchema, type Cliente, type ClienteFormValues, EstadoEnum } from '@/lib/schemas';
+import { ClienteSchema, type Cliente, EstadoEnum } from '@/lib/schemas';
 import { Button } from '@/components/ui/button';
 import {
   Form,
@@ -34,8 +34,8 @@ interface EmpresaOption {
 }
 
 interface ClienteFormProps {
-  onSubmit: (data: Cliente) => Promise<void>; // Changed to accept full Cliente
-  defaultValues?: Partial<Cliente>; // Use full Cliente
+  onSubmit: (data: Cliente) => Promise<void>;
+  defaultValues?: Partial<Cliente>;
   empresas?: EmpresaOption[];
   isSubmitting?: boolean;
   submitButtonText?: string;
@@ -54,7 +54,7 @@ export function ClienteForm({
     defaultValues?.latitud && defaultValues?.longitud && defaultValues?.direccion ? { lat: defaultValues.latitud, lng: defaultValues.longitud, formattedAddress: defaultValues.direccion } : null
   );
 
-  const form = useForm<Cliente>({ // Use full Cliente for form type
+  const form = useForm<Cliente>({
     resolver: zodResolver(ClienteSchema.omit({ created_at: true, updated_at: true })),
     defaultValues: {
       estado: "activo",
@@ -93,15 +93,17 @@ export function ClienteForm({
       if (result) {
         form.setValue("latitud", result.lat, { shouldValidate: true });
         form.setValue("longitud", result.lng, { shouldValidate: true });
+        form.setValue("direccion", result.formattedAddress, { shouldValidate: true }); // Update address field
         setGeocodedData(result);
         toast({
           title: "Geocodificación Exitosa",
-          description: `Dirección verificada: ${result.formattedAddress}`,
+          description: `Dirección verificada y actualizada: ${result.formattedAddress}`,
           variant: "default",
         });
       } else {
         form.setValue("latitud", null);
         form.setValue("longitud", null);
+        // Do not clear the address field if geocoding fails, let user correct it.
         toast({
           title: "Error de Geocodificación",
           description: "No se pudo encontrar la dirección o está fuera de Mar del Plata.",

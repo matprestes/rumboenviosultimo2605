@@ -1,10 +1,10 @@
 
 "use client";
 
-import * as React from 'react'; // Changed from type-only import
+import * as React from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { EmpresaSchema, type Empresa, type EmpresaFormValues, EstadoEnum } from '@/lib/schemas';
+import { EmpresaSchema, type Empresa, EstadoEnum } from '@/lib/schemas';
 import { Button } from '@/components/ui/button';
 import {
   Form,
@@ -29,8 +29,8 @@ import { geocodeAddress, type GeocodeResult } from '@/services/google-maps-servi
 import { useToast } from '@/hooks/use-toast';
 
 interface EmpresaFormProps {
-  onSubmit: (data: Empresa) => Promise<void>; // Changed to accept full Empresa for updates
-  defaultValues?: Partial<Empresa>; // Use full Empresa for defaultValues
+  onSubmit: (data: Empresa) => Promise<void>;
+  defaultValues?: Partial<Empresa>;
   isSubmitting?: boolean;
   submitButtonText?: string;
 }
@@ -47,8 +47,8 @@ export function EmpresaForm({
     defaultValues?.latitud && defaultValues?.longitud && defaultValues?.direccion ? { lat: defaultValues.latitud, lng: defaultValues.longitud, formattedAddress: defaultValues.direccion } : null
   );
 
-  const form = useForm<Empresa>({ // Use full Empresa for form type
-    resolver: zodResolver(EmpresaSchema.omit({ created_at: true, updated_at: true })), // ID is optional for create, present for update
+  const form = useForm<Empresa>({
+    resolver: zodResolver(EmpresaSchema.omit({ created_at: true, updated_at: true })),
     defaultValues: {
       estado: "activo",
       ...defaultValues,
@@ -58,7 +58,7 @@ export function EmpresaForm({
   React.useEffect(() => {
     if (defaultValues) {
       form.reset({
-        estado: "activo", // Ensure default state
+        estado: "activo",
         ...defaultValues,
       });
       if (defaultValues.latitud && defaultValues.longitud && defaultValues.direccion) {
@@ -87,15 +87,17 @@ export function EmpresaForm({
       if (result) {
         form.setValue("latitud", result.lat, { shouldValidate: true });
         form.setValue("longitud", result.lng, { shouldValidate: true });
+        form.setValue("direccion", result.formattedAddress, { shouldValidate: true }); // Update address field
         setGeocodedData(result);
         toast({
           title: "Geocodificación Exitosa",
-          description: `Dirección verificada: ${result.formattedAddress}`,
+          description: `Dirección verificada y actualizada: ${result.formattedAddress}`,
           variant: "default",
         });
       } else {
         form.setValue("latitud", null);
         form.setValue("longitud", null);
+        // Do not clear the address field if geocoding fails
         toast({
           title: "Error de Geocodificación",
           description: "No se pudo encontrar la dirección o está fuera de Mar del Plata.",
@@ -119,7 +121,7 @@ export function EmpresaForm({
   const handleFormSubmit = async (data: Empresa) => {
     const dataToSubmit: Empresa = {
       ...data,
-      id: defaultValues?.id || data.id, // Ensure ID is passed for updates
+      id: defaultValues?.id || data.id,
       latitud: form.getValues("latitud"),
       longitud: form.getValues("longitud"),
     };
