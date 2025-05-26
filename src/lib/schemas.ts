@@ -112,8 +112,8 @@ const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/; // HH:MM format
 export const EnvioBaseSchema = z.object({
   id: z.string().uuid().optional(),
   remitente_cliente_id: z.string().uuid({ message: "Debe seleccionar un cliente remitente." }).nullable().optional(),
-  nombre_destinatario: z.string().min(3, "El nombre del destinatario es requerido.").optional().nullable(), // Made optional for internal form
-  telefono_destinatario: z.string().min(7, "El teléfono del destinatario es requerido.").optional().nullable(), // Made optional for internal form
+  nombre_destinatario: z.string().min(3, "El nombre del destinatario es requerido.").optional().nullable(),
+  telefono_destinatario: z.string().min(7, "El teléfono del destinatario es requerido.").optional().nullable(),
   cliente_temporal_nombre: z.string().nullable().optional(),
   cliente_temporal_telefono: z.string().nullable().optional(),
   direccion_origen: z.string().min(5, "La dirección de origen es requerida."),
@@ -153,7 +153,7 @@ export const EnvioSchema = EnvioBaseSchema.superRefine((data, ctx) => {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       message: "Debe seleccionar un cliente remitente, una empresa de origen, o ingresar un nombre de cliente temporal.",
-      path: ["remitente_cliente_id"], 
+      path: ["remitente_cliente_id"],
     });
   }
   if (data.cliente_temporal_nombre && !data.cliente_temporal_telefono) {
@@ -163,11 +163,25 @@ export const EnvioSchema = EnvioBaseSchema.superRefine((data, ctx) => {
       path: ["cliente_temporal_telefono"],
     });
   }
-  if (!data.nombre_destinatario && !data.empresa_destino_id) { // For general envio form, either a recipient name or a destination company is expected.
+  if (!data.nombre_destinatario && !data.empresa_destino_id) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       message: "Debe ingresar un nombre de destinatario o seleccionar una empresa de destino.",
       path: ["nombre_destinatario"],
+    });
+  }
+   if (!data.tipo_paquete_id) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Debe seleccionar un tipo de paquete.",
+      path: ["tipo_paquete_id"],
+    });
+  }
+  if (!data.tipo_servicio_id) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Debe seleccionar un tipo de servicio.",
+      path: ["tipo_servicio_id"],
     });
   }
 });
@@ -189,7 +203,7 @@ export const DosRuedasEnvioFormSchema = z.object({
 export type DosRuedasEnvioFormValues = z.infer<typeof DosRuedasEnvioFormSchema>;
 
 export interface EnvioConDetalles extends Envio {
-  clientes?: Pick<Cliente, 'id' | 'nombre' | 'apellido'> | null; 
+  clientes?: Pick<Cliente, 'id' | 'nombre' | 'apellido'> | null;
   empresas_origen?: Pick<Empresa, 'id' | 'nombre'> | null;
   empresas_destino?: Pick<Empresa, 'id' | 'nombre'> | null;
   tipos_paquete?: Pick<TipoPaquete, 'id' | 'nombre'> | null;
@@ -218,7 +232,7 @@ export type RepartoFormValues = Omit<Reparto, 'id' | 'created_at' | 'updated_at'
 
 export interface RepartoConDetalles extends Reparto {
   repartidores?: Pick<Repartidor, 'id' | 'nombre'> | null;
-  empresas?: Pick<Empresa, 'id' | 'nombre' | 'latitud' | 'longitud'> | null; // Added lat/lng for empresa origin
+  empresas?: Pick<Empresa, 'id' | 'nombre' | 'latitud' | 'longitud' | 'direccion'> | null;
   paradas_count?: number;
 }
 
@@ -226,12 +240,12 @@ export interface RepartoConDetalles extends Reparto {
 export const ParadaRepartoSchema = z.object({
   id: z.string().uuid().optional(),
   reparto_id: z.string().uuid(),
-  envio_id: z.string().uuid().nullable().optional(), 
-  descripcion_parada: z.string().nullable().optional(), 
+  envio_id: z.string().uuid().nullable().optional(),
+  descripcion_parada: z.string().nullable().optional(),
   orden_visita: z.number().int().positive().nullable().optional(),
-  estado_parada: EstadoEnvioEnum.default('asignado'), 
-  hora_estimada_llegada: z.string().nullable().optional(),
-  hora_real_llegada: z.string().nullable().optional(),
+  estado_parada: EstadoEnvioEnum.default('asignado'),
+  hora_estimada_llegada: z.string().nullable().optional(), // Consider HH:MM string or proper time type if needed
+  hora_real_llegada: z.string().nullable().optional(), // Consider HH:MM string
   notas_parada: z.string().nullable().optional(),
   created_at: z.string().datetime().optional(),
   updated_at: z.string().datetime().optional(),
@@ -240,7 +254,7 @@ export const ParadaRepartoSchema = z.object({
 export type ParadaReparto = z.infer<typeof ParadaRepartoSchema>;
 
 export interface ParadaConDetalles extends ParadaReparto {
-  envios?: EnvioConDetalles | null; 
+  envios?: EnvioConDetalles | null;
 }
 
 // --- Reparto Lote Schemas ---
@@ -303,3 +317,4 @@ export type ActiveRepartoListItem = Pick<Reparto, 'id' | 'fecha_reparto' | 'esta
     envios?: Pick<Envio, 'latitud_destino' | 'longitud_destino' | 'direccion_destino'> | null;
   }>;
 };
+
