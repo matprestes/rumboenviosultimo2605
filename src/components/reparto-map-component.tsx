@@ -2,10 +2,12 @@
 "use client";
 
 import * as React from 'react';
-import { Loader } from '@googlemaps/js-api-loader';
+// Removed local Loader import
 import type { ParadaConDetalles, Empresa } from '@/lib/schemas';
 import { useToast } from '@/hooks/use-toast';
-import { cn } from '@/lib/utils'; // For potential future use with custom overlays
+import { cn } from '@/lib/utils'; 
+import { Loader2 } from 'lucide-react'; // Ensure Loader2 is imported for fallback
+import { getGoogleMapsApi } from '@/services/google-maps-service'; // Import the centralized loader
 
 interface RepartoMapComponentProps {
   paradas: ParadaConDetalles[];
@@ -14,14 +16,7 @@ interface RepartoMapComponentProps {
 }
 
 const API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-
 const MAR_DEL_PLATA_CENTER = { lat: -38.00228, lng: -57.55754 };
-
-const loader = new Loader({
-  apiKey: API_KEY || '',
-  version: 'weekly',
-  libraries: ['marker', 'geometry'],
-});
 
 // Colors for markers
 const PICKUP_COLOR = '#1E88E5'; // Blue for Pickup
@@ -44,12 +39,12 @@ export function RepartoMapComponent({ paradas, empresaOrigen, repartoId }: Repar
       return;
     }
 
-    loader.load().then((google) => {
+    getGoogleMapsApi().then((google) => { // Use the centralized loader
       if (mapRef.current && !map) {
         const newMap = new google.maps.Map(mapRef.current, {
           center: MAR_DEL_PLATA_CENTER,
           zoom: 12,
-          mapId: `REPARTO_MAP_${repartoId.substring(0,8)}`, // Unique mapId
+          mapId: `REPARTO_MAP_${repartoId.substring(0,8)}`, 
         });
         setMap(newMap);
         setInfoWindow(new google.maps.InfoWindow());
@@ -61,18 +56,18 @@ export function RepartoMapComponent({ paradas, empresaOrigen, repartoId }: Repar
       setIsLoadingMap(false);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [repartoId]); // map and toast are stable, only run once on repartoId change if needed
+  }, [repartoId]); 
 
   React.useEffect(() => {
-    if (!map || !google.maps || paradas.length === 0) {
+    if (!map || !google?.maps?.SymbolPath ) { // Check for google.maps.SymbolPath
+      // Clear markers and polyline if map or paradas are not ready
       markers.forEach(marker => marker.setMap(null));
       setMarkers([]);
       if (polyline) polyline.setMap(null);
       setPolyline(null);
       return;
     }
-
-    // Clear existing markers and polyline
+    
     markers.forEach(marker => marker.setMap(null));
     if (polyline) polyline.setMap(null);
 
@@ -91,15 +86,13 @@ export function RepartoMapComponent({ paradas, empresaOrigen, repartoId }: Repar
       let labelText = `${parada.orden_visita || index + 1}`;
 
       if (!parada.envio_id && parada.descripcion_parada && empresaOrigen?.latitud && empresaOrigen?.longitud) {
-        // This is likely the empresa pickup stop for a "Reparto por Lote"
         position = { lat: empresaOrigen.latitud, lng: empresaOrigen.longitud };
         title = `Retiro: ${empresaOrigen.nombre || parada.descripcion_parada}`;
         infoContent += `<p style="margin:0 0 3px 0; font-size: 0.9em;"><strong>${parada.descripcion_parada}</strong></p>`;
         infoContent += `<p style="margin:0 0 3px 0; font-size: 0.9em;">${empresaOrigen.direccion || ''}</p>`;
         markerColor = PICKUP_COLOR;
-        labelText = "P"; // Pickup
+        labelText = "P"; 
       } else if (parada.envios && parada.envios.latitud_destino != null && parada.envios.longitud_destino != null) {
-        // This is a delivery stop
         position = { lat: parada.envios.latitud_destino, lng: parada.envios.longitud_destino };
         title = `Entrega: ${parada.envios.direccion_destino || 'N/A'}`;
         infoContent += `<p style="margin:0 0 3px 0; font-size: 0.9em;"><strong>Envío ID:</strong> ${parada.envio_id?.substring(0,8)}...</p>`;
@@ -154,7 +147,7 @@ export function RepartoMapComponent({ paradas, empresaOrigen, repartoId }: Repar
       const newPolyline = new google.maps.Polyline({
         path: pathCoordinates,
         geodesic: true,
-        strokeColor: '#4285F4', // Google Blue
+        strokeColor: '#4285F4', 
         strokeOpacity: 0.8,
         strokeWeight: 3,
       });
@@ -167,16 +160,16 @@ export function RepartoMapComponent({ paradas, empresaOrigen, repartoId }: Repar
 
     if (newMarkers.length > 0 && !bounds.isEmpty()) {
       map.fitBounds(bounds);
-      if (newMarkers.length === 1 && map.getZoom() && map.getZoom() > 15) { // Prevent over-zooming for a single marker
+      if (newMarkers.length === 1 && map.getZoom() && map.getZoom() > 15) { 
         map.setZoom(15);
       }
-    } else if (newMarkers.length === 0) {
+    } else if (newMarkers.length === 0 && map) { // Ensure map exists before setting center/zoom
        map.setCenter(MAR_DEL_PLATA_CENTER);
        map.setZoom(12);
     }
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, paradas, empresaOrigen, infoWindow]);
+  }, [map, paradas, empresaOrigen, infoWindow]); // Removed google from deps as it's stable after load
 
   if (isLoadingMap && API_KEY) {
     return (

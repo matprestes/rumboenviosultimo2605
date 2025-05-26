@@ -14,24 +14,42 @@ const API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
 if (!API_KEY) {
   console.warn(
-    'Google Maps API key is missing. Geocoding will not work. Set NEXT_PUBLIC_GOOGLE_MAPS_API_KEY in your .env.local file.'
+    'Google Maps API key is missing. Geocoding and maps will not work. Set NEXT_PUBLIC_GOOGLE_MAPS_API_KEY in your .env.local file.'
   );
 }
+
+// Define the superset of all libraries needed by the application
+const comprehensiveLibraries: LoaderOptions['libraries'] = ['geocoding', 'places', 'marker', 'geometry'];
 
 const loaderOptions: LoaderOptions = {
   apiKey: API_KEY || '',
   version: 'weekly',
-  libraries: ['geocoding', 'places'], // 'places' might be useful for autocomplete later
+  libraries: comprehensiveLibraries, 
+  id: '__googleMapsScriptId', // Ensure a consistent ID for the script tag
 };
 
-const loader = new Loader(loaderOptions);
 let googleMapsApiPromise: Promise<typeof google> | null = null;
+let loaderInstance: Loader | null = null;
 
-function getGoogleMapsApi(): Promise<typeof google> {
+function getLoaderInstance(): Loader {
+  if (!loaderInstance) {
+    if (!API_KEY) {
+        // This case should ideally not be reached if API_KEY check is done before calling,
+        // but as a safeguard for the Loader constructor.
+        throw new Error('Google Maps API key is not configured for Loader instantiation.');
+    }
+    loaderInstance = new Loader(loaderOptions);
+  }
+  return loaderInstance;
+}
+
+export function getGoogleMapsApi(): Promise<typeof google> {
   if (!API_KEY) {
     return Promise.reject(new Error('Google Maps API key is not configured.'));
   }
   if (!googleMapsApiPromise) {
+    // Ensures Loader is instantiated only once and load is called only once on that instance.
+    const loader = getLoaderInstance();
     googleMapsApiPromise = loader.load();
   }
   return googleMapsApiPromise;
@@ -52,21 +70,15 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult | n
   }
 
   try {
-    const google = await getGoogleMapsApi();
+    const google = await getGoogleMapsApi(); // Uses the centralized loader
     const geocoder = new google.maps.Geocoder();
 
     const request: google.maps.GeocoderRequest = {
       address: address,
       componentRestrictions: {
-        country: 'AR', // Argentina
-        // postalCode: 'B7600', // Example postal code prefix for Mar del Plata
-        // administrativeArea: 'Buenos Aires Province',
-        locality: 'Mar del Plata', // Bias results towards Mar del Plata
+        country: 'AR', 
+        locality: 'Mar del Plata', 
       },
-      // bounds: new google.maps.LatLngBounds( // Bias results to MDP bounds
-      //   new google.maps.LatLng(MAR_DEL_PLATA_BOUNDS.south, MAR_DEL_PLATA_BOUNDS.west),
-      //   new google.maps.LatLng(MAR_DEL_PLATA_BOUNDS.north, MAR_DEL_PLATA_BOUNDS.east)
-      // ),
     };
     
     const response = await geocoder.geocode(request);
@@ -77,8 +89,6 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult | n
       const lat = location.lat();
       const lng = location.lng();
 
-      // Check if the result is within Mar del Plata (approximate check)
-      // A more robust check would be to inspect address_components for locality or administrative_area_level_2
       let isInMarDelPlata = false;
       let cityComponent = '';
       let countryComponent = '';
@@ -95,7 +105,6 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult | n
         }
       });
       
-      // Fallback to bounding box if locality check isn't conclusive or for broader matching
       if (!isInMarDelPlata) {
         if (
           lat >= MAR_DEL_PLATA_BOUNDS.south &&
@@ -103,16 +112,9 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult | n
           lng >= MAR_DEL_PLATA_BOUNDS.west &&
           lng <= MAR_DEL_PLATA_BOUNDS.east
         ) {
-          // If locality wasn't MDP but it's in bounds, we might still accept it,
-          // or flag for review. For now, let's be a bit lenient if locality is missing.
-          if (!cityComponent.toLowerCase().includes('mar del plata')) {
-             // console.warn("Address geocoded within MDP bounds, but locality is not Mar del Plata:", result.formatted_address);
-             // We might still allow this, or make the check stricter based on requirements
-          }
-          isInMarDelPlata = true; // If within bounds, consider it potentially valid
+          isInMarDelPlata = true; 
         }
       }
-
 
       if (isInMarDelPlata) {
         return {
@@ -124,11 +126,11 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult | n
         };
       } else {
         console.warn('Address geocoded outside Mar del Plata:', result.formatted_address, {lat,lng});
-        return null; // Address is outside Mar del Plata
+        return null; 
       }
     } else {
       console.warn('No results found for address:', address);
-      return null; // No results found
+      return null; 
     }
   } catch (error) {
     console.error('Geocoding error:', error);

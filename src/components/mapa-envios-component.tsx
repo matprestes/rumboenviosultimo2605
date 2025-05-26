@@ -2,10 +2,11 @@
 "use client";
 
 import * as React from 'react';
-import { Loader as GoogleMapsLoader } from '@googlemaps/js-api-loader'; // Renamed to avoid conflict
+// Removed local GoogleMapsLoader import
 import type { UnassignedEnvioListItem } from '@/lib/schemas';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, TruckIcon, PackageQuestion, MapPin } from 'lucide-react'; // Added Loader2
+import { Loader2, TruckIcon, PackageSearch, MapPin } from "lucide-react"; 
+import { getGoogleMapsApi } from '@/services/google-maps-service'; // Import the centralized loader
 
 interface MapaEnviosComponentProps {
   unassignedEnvios: UnassignedEnvioListItem[];
@@ -15,12 +16,6 @@ interface MapaEnviosComponentProps {
 
 const API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 const MAR_DEL_PLATA_CENTER = { lat: -38.00228, lng: -57.55754 };
-
-const loader = new GoogleMapsLoader({ // Use renamed import
-  apiKey: API_KEY || '',
-  version: 'weekly',
-  libraries: ['marker', 'geometry', 'places'],
-});
 
 const UNASSIGNED_COLOR = '#FF5722'; // Deep Orange for unassigned
 const SELECTED_UNASSIGNED_COLOR = '#FFC107'; // Amber for selected unassigned
@@ -44,7 +39,7 @@ export function MapaEnviosComponent({
       return;
     }
 
-    loader.load().then((google) => {
+    getGoogleMapsApi().then((google) => { // Use the centralized loader
       if (mapRef.current && !map) {
         const newMap = new google.maps.Map(mapRef.current, {
           center: MAR_DEL_PLATA_CENTER,
@@ -60,11 +55,12 @@ export function MapaEnviosComponent({
       toast({ title: "Error al cargar Mapa", description: "No se pudo inicializar Google Maps.", variant: "destructive"});
       setIsLoadingMap(false);
     });
-  }, [map, toast]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, toast]); // map and toast are stable
 
 
   React.useEffect(() => {
-    if (!map || !google.maps) return;
+    if (!map || !google?.maps?.SymbolPath) return; // Ensure google.maps and SymbolPath are available
 
     markers.forEach(marker => marker.setMap(null));
     const newMarkers: google.maps.Marker[] = [];
@@ -125,7 +121,7 @@ export function MapaEnviosComponent({
        map.setZoom(12);
     }
 
-
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, unassignedEnvios, onUnassignedEnvioSelect, infoWindow, selectedEnvioId]);
 
   if (isLoadingMap && API_KEY) {
