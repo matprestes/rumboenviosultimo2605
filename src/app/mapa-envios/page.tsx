@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { MapIcon, Loader2, PackageQuestion, Route, Send, X, Sparkles } from "lucide-react";
+import { MapIcon, Loader2, PackageSearch, Route, Send, X, Sparkles } from "lucide-react"; // Corrected import
 import { MapaEnviosComponent } from '@/components/mapa-envios-component';
 import type { UnassignedEnvioListItem, ActiveRepartoListItem, Envio } from '@/lib/schemas';
 import { getUnassignedEnviosForMapAction, getActiveRepartosWithDetailsAction, assignEnvioToRepartoAction } from '@/actions/reparto-actions';
@@ -135,7 +135,7 @@ export default function MapaEnviosAsignacionPage() {
       <Card className="w-full md:w-1/3 lg:w-1/4 flex flex-col shadow-lg">
         <CardHeader className="py-3 px-4 border-b">
           <CardTitle className="text-lg flex items-center gap-2">
-            <PackageQuestion size={20} className="text-primary"/> Envíos No Asignados ({unassignedEnvios.length})
+            <PackageSearch size={20} className="text-primary"/> Envíos No Asignados ({unassignedEnvios.length}) 
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0 flex-grow overflow-y-auto">
