@@ -20,8 +20,9 @@ import {
 import { Button } from '@/components/ui/button';
 import { Home, Building2, Users, Truck, Package, ClipboardList, MapIcon, Settings, ShipWheel, Route, ClipboardPlus, Layers, ChevronRight } from 'lucide-react';
 import { Separator } from './ui/separator';
-import { cn } from "@/lib/utils"; // Ensured cn is imported
-// Removed SheetTitle import from here as it's handled by ui/sidebar.tsx for mobile
+import { cn } from "@/lib/utils";
+// SheetTitle should not be imported or used here directly for the mobile sidebar's accessible title.
+// That will be handled by the Sidebar component itself.
 
 const navItems = [
   { href: '/', label: 'Inicio', icon: Home },
@@ -53,7 +54,6 @@ function MainNavigation() {
   };
 
   React.useEffect(() => {
-    // Close submenus when main sidebar collapses on desktop
     if (!open && !isMobile) {
       setOpenSubMenus({});
     }
@@ -131,7 +131,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <SidebarProvider defaultOpen={true}>
       <Sidebar>
         <SidebarHeader className="p-4">
-          {/* Visual title elements are here */}
+          {/* Visual title elements are here. The accessible title for the mobile Sheet
+              is handled within the Sidebar component itself. */}
           <div className="flex items-center gap-2">
             <ShipWheel className="h-8 w-8 text-primary" />
             <div className="flex flex-col">
