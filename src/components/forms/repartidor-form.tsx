@@ -1,7 +1,7 @@
 
 "use client";
 
-import type * as React from 'react';
+import * as React from 'react'; // Changed from type-only import
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { RepartidorSchema, type Repartidor, type RepartidorFormValues, EstadoEnum } from '@/lib/schemas';

@@ -1,6 +1,7 @@
+
 "use client";
 
-import type * as React from 'react';
+import * as React from 'react'; // Changed from type-only import
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DollarSign } from 'lucide-react';
 

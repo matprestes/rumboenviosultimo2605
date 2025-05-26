@@ -1,6 +1,7 @@
+
 "use client";
 
-import type * as React from 'react';
+import * as React from 'react'; // Changed from type-only import
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Lightbulb, Clock, Info } from 'lucide-react';

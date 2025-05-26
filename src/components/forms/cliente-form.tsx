@@ -1,7 +1,7 @@
 
 "use client";
 
-import type * as React from 'react';
+import * as React from 'react'; // Changed from type-only import
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ClienteSchema, type Cliente, type ClienteFormValues, EstadoEnum } from '@/lib/schemas';
