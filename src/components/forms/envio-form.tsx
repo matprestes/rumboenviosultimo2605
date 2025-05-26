@@ -27,7 +27,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { CalendarIcon, Loader2, MapPin, CheckCircle, AlertTriangle, UserPlus, Building } from 'lucide-react';
-import { geocodeAddress, type GeocodeResult } from '@/services/google-maps-service';
+import { geocodeAddress, type GeocodeResult, getGoogleMapsApi } from '@/services/google-maps-service';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
@@ -60,21 +60,21 @@ export function EnvioForm({
   formType
 }: EnvioFormProps) {
   const { toast } = useToast();
+  const [isMapsApiReady, setIsMapsApiReady] = React.useState(false);
   const [isGeocodingOrigin, setIsGeocodingOrigin] = React.useState(false);
   const [geocodedOrigin, setGeocodedOrigin] = React.useState<GeocodeResult | null>(null);
   const [isGeocodingDest, setIsGeocodingDest] = React.useState(false);
   const [geocodedDest, setGeocodedDest] = React.useState<GeocodeResult | null>(null);
 
   const [clienteSelectionMode, setClienteSelectionMode] = React.useState<'existing' | 'temporal'>(
-    defaultValues?.cliente_id ? 'existing' : (defaultValues?.cliente_temporal_nombre ? 'temporal' : 'existing')
+    defaultValues?.remitente_cliente_id ? 'existing' : (defaultValues?.cliente_temporal_nombre ? 'temporal' : 'existing')
   );
-
 
   const form = useForm<Envio>({
     resolver: zodResolver(EnvioSchema),
     defaultValues: {
       estado: 'pendiente_asignacion',
-      cliente_id: null,
+      remitente_cliente_id: null,
       cliente_temporal_nombre: null,
       cliente_temporal_telefono: null,
       empresa_origen_id: null,
@@ -89,14 +89,29 @@ export function EnvioForm({
       longitud_origen: null,
       latitud_destino: null,
       longitud_destino: null,
+      tipo_paquete_id: tiposPaquete.length > 0 ? tiposPaquete[0].id : undefined,
+      tipo_servicio_id: tiposServicio.length > 0 ? tiposServicio[0].id : undefined,
       ...defaultValues,
       fecha_estimada_entrega: defaultValues?.fecha_estimada_entrega ? new Date(defaultValues.fecha_estimada_entrega) : undefined,
     },
   });
 
   React.useEffect(() => {
+    getGoogleMapsApi()
+      .then(() => setIsMapsApiReady(true))
+      .catch((error) => {
+        console.error("Failed to load Google Maps API in EnvioForm:", error);
+        toast({
+          title: "Error de Mapa",
+          description: "No se pudo cargar la API de Google Maps. La geocodificación no estará disponible.",
+          variant: "destructive",
+        });
+      });
+  }, [toast]);
+
+  React.useEffect(() => {
     if (defaultValues) {
-      const currentClienteMode = defaultValues.cliente_id ? 'existing' : (defaultValues.cliente_temporal_nombre ? 'temporal' : 'existing');
+      const currentClienteMode = defaultValues.remitente_cliente_id ? 'existing' : (defaultValues.cliente_temporal_nombre ? 'temporal' : 'existing');
       setClienteSelectionMode(currentClienteMode);
       
       form.reset({
@@ -117,9 +132,9 @@ export function EnvioForm({
       form.setValue('cliente_temporal_nombre', null);
       form.setValue('cliente_temporal_telefono', null);
     } else {
-      form.setValue('cliente_id', null);
+      form.setValue('remitente_cliente_id', null);
     }
-    form.trigger(['cliente_id', 'cliente_temporal_nombre', 'cliente_temporal_telefono']);
+    form.trigger(['remitente_cliente_id', 'cliente_temporal_nombre', 'cliente_temporal_telefono']);
   }, [clienteSelectionMode, form]);
 
 
@@ -131,6 +146,10 @@ export function EnvioForm({
     setGeocodingState: React.Dispatch<React.SetStateAction<boolean>>,
     setGeocodedDataState: React.Dispatch<React.SetStateAction<GeocodeResult | null>>
   ) => {
+    if (!isMapsApiReady) {
+      toast({ title: "API de Mapas no lista", description: "Espere a que la API de Google Maps cargue.", variant: "default" });
+      return;
+    }
     const addressValue = form.getValues(addressField) as string;
     if (!addressValue || addressValue.trim().length < 5) {
       toast({ title: "Error de Dirección", description: "Por favor, ingrese una dirección más completa.", variant: "destructive" });
@@ -191,7 +210,7 @@ export function EnvioForm({
             {clienteSelectionMode === 'existing' && (
               <FormField
                 control={form.control}
-                name="cliente_id"
+                name="remitente_cliente_id"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Cliente Existente</FormLabel>
@@ -256,11 +275,12 @@ export function EnvioForm({
                   <FormLabel>Dirección de Origen</FormLabel>
                   <div className="flex items-center gap-2">
                     <FormControl className="flex-grow"><Input placeholder="Ej: Calle Falsa 123, Mar del Plata" {...field} /></FormControl>
-                    <Button type="button" onClick={() => handleGeocode('origin', 'direccion_origen', 'latitud_origen', 'longitud_origen', setIsGeocodingOrigin, setGeocodedOrigin)} disabled={isGeocodingOrigin} variant="outline">
+                    <Button type="button" onClick={() => handleGeocode('origin', 'direccion_origen', 'latitud_origen', 'longitud_origen', setIsGeocodingOrigin, setGeocodedOrigin)} disabled={isGeocodingOrigin || !isMapsApiReady} variant="outline">
                       {isGeocodingOrigin ? <Loader2 className="h-4 w-4 animate-spin" /> : <MapPin className="h-4 w-4" />}
                       <span className="ml-2 hidden sm:inline">Verificar</span>
                     </Button>
                   </div>
+                  {!isMapsApiReady && <FormDescription className="text-orange-600">API de Mapas no disponible.</FormDescription>}
                   {geocodedOrigin?.formattedAddress && <FormDescription className="text-green-600 flex items-center gap-1"><CheckCircle size={16} /> Verificada: {geocodedOrigin.formattedAddress}</FormDescription>}
                   {!isGeocodingOrigin && form.formState.dirtyFields.direccion_origen && !geocodedOrigin?.formattedAddress && <FormDescription className="text-orange-600 flex items-center gap-1"><AlertTriangle size={16}/> Verifique la dirección.</FormDescription>}
                   <FormMessage />
@@ -313,11 +333,12 @@ export function EnvioForm({
                   <FormLabel>Dirección de Destino</FormLabel>
                   <div className="flex items-center gap-2">
                     <FormControl className="flex-grow"><Input placeholder="Ej: Av. Colón 2020, Mar del Plata" {...field} /></FormControl>
-                    <Button type="button" onClick={() => handleGeocode('destination', 'direccion_destino', 'latitud_destino', 'longitud_destino', setIsGeocodingDest, setGeocodedDest)} disabled={isGeocodingDest} variant="outline">
+                    <Button type="button" onClick={() => handleGeocode('destination', 'direccion_destino', 'latitud_destino', 'longitud_destino', setIsGeocodingDest, setGeocodedDest)} disabled={isGeocodingDest || !isMapsApiReady} variant="outline">
                       {isGeocodingDest ? <Loader2 className="h-4 w-4 animate-spin" /> : <MapPin className="h-4 w-4" />}
                       <span className="ml-2 hidden sm:inline">Verificar</span>
                     </Button>
                   </div>
+                  {!isMapsApiReady && <FormDescription className="text-orange-600">API de Mapas no disponible.</FormDescription>}
                   {geocodedDest?.formattedAddress && <FormDescription className="text-green-600 flex items-center gap-1"><CheckCircle size={16} /> Verificada: {geocodedDest.formattedAddress}</FormDescription>}
                   {!isGeocodingDest && form.formState.dirtyFields.direccion_destino && !geocodedDest?.formattedAddress && <FormDescription className="text-orange-600 flex items-center gap-1"><AlertTriangle size={16}/> Verifique la dirección.</FormDescription>}
                   <FormMessage />
@@ -344,7 +365,7 @@ export function EnvioForm({
                 </FormItem>
               )}
             />
-            <FormField
+             <FormField
                 control={form.control}
                 name="notas_destino"
                 render={({ field }) => (
@@ -355,6 +376,32 @@ export function EnvioForm({
                     </FormItem>
                 )}
             />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                 <FormField
+                    control={form.control}
+                    name="nombre_destinatario"
+                    render={({ field }) => (
+                        <FormItem>
+                        <FormLabel>Nombre de quien recibe</FormLabel>
+                        <FormControl><Input placeholder="Nombre completo del destinatario" {...field} value={field.value ?? ""} /></FormControl>
+                        <FormMessage />
+                        </FormItem>
+                    )}
+                 />
+                <FormField
+                    control={form.control}
+                    name="telefono_destinatario"
+                    render={({ field }) => (
+                        <FormItem>
+                        <FormLabel>Teléfono de quien recibe</FormLabel>
+                        <FormControl><Input placeholder="Teléfono del destinatario" {...field} value={field.value ?? ""} /></FormControl>
+                        <FormMessage />
+                        </FormItem>
+                    )}
+                />
+            </div>
+
+
           </CardContent>
         </Card>
 
@@ -385,7 +432,11 @@ export function EnvioForm({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Peso (kg) (Opcional)</FormLabel>
-                    <FormControl><Input type="number" step="0.1" placeholder="Ej: 1.5" {...field} value={field.value ?? ""} /></FormControl>
+                    <FormControl><Input type="number" step="0.1" placeholder="Ej: 1.5" 
+                     {...field} 
+                     onChange={e => field.onChange(e.target.value === '' ? null : parseFloat(e.target.value))}
+                     value={field.value ?? ""} 
+                    /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -413,7 +464,11 @@ export function EnvioForm({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Precio</FormLabel>
-                  <FormControl><Input type="number" step="0.01" placeholder="Ej: 500.00" {...field} value={field.value ?? 0} /></FormControl>
+                  <FormControl><Input type="number" step="0.01" placeholder="Ej: 500.00" 
+                    {...field} 
+                    onChange={e => field.onChange(parseFloat(e.target.value) || 0)}
+                    value={field.value ?? 0} 
+                  /></FormControl>
                   <FormMessage />
                 </FormItem>
               )}
@@ -482,10 +537,21 @@ export function EnvioForm({
                 </FormItem>
               )}
             />
+             <FormField
+                control={form.control}
+                name="detalles_adicionales"
+                render={({ field }) => (
+                    <FormItem>
+                    <FormLabel>Detalles Adicionales (Opcional)</FormLabel>
+                    <FormControl><Textarea placeholder="Cualquier otra información relevante para el envío..." {...field} value={field.value ?? ""} /></FormControl>
+                    <FormMessage />
+                    </FormItem>
+                )}
+            />
           </CardContent>
         </Card>
 
-        <Button type="submit" className="w-full" disabled={isSubmitting || isGeocodingOrigin || isGeocodingDest}>
+        <Button type="submit" className="w-full" disabled={isSubmitting || isGeocodingOrigin || isGeocodingDest || !isMapsApiReady}>
           {(isSubmitting || isGeocodingOrigin || isGeocodingDest) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           {submitButtonText}
         </Button>

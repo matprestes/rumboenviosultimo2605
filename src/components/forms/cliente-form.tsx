@@ -25,7 +25,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Loader2, MapPin, CheckCircle, AlertTriangle } from 'lucide-react';
-import { geocodeAddress, type GeocodeResult } from '@/services/google-maps-service';
+import { geocodeAddress, type GeocodeResult, getGoogleMapsApi } from '@/services/google-maps-service';
 import { useToast } from '@/hooks/use-toast';
 
 interface EmpresaOption {
@@ -49,18 +49,32 @@ export function ClienteForm({
   submitButtonText = "Guardar Cliente"
 }: ClienteFormProps) {
   const { toast } = useToast();
+  const [isMapsApiReady, setIsMapsApiReady] = React.useState(false);
   const [isGeocoding, setIsGeocoding] = React.useState(false);
   const [geocodedData, setGeocodedData] = React.useState<GeocodeResult | null>(
     defaultValues?.latitud && defaultValues?.longitud && defaultValues?.direccion ? { lat: defaultValues.latitud, lng: defaultValues.longitud, formattedAddress: defaultValues.direccion } : null
   );
 
   const form = useForm<Cliente>({
-    resolver: zodResolver(ClienteSchema.omit({ created_at: true, updated_at: true })),
+    resolver: zodResolver(ClienteSchema.omit({ created_at: true, updated_at: true, empresas: true })),
     defaultValues: {
       estado: "activo",
       ...defaultValues,
     },
   });
+
+   React.useEffect(() => {
+    getGoogleMapsApi()
+      .then(() => setIsMapsApiReady(true))
+      .catch((error) => {
+        console.error("Failed to load Google Maps API in ClienteForm:", error);
+        toast({
+          title: "Error de Mapa",
+          description: "No se pudo cargar la API de Google Maps. La geocodificación no estará disponible.",
+          variant: "destructive",
+        });
+      });
+  }, [toast]);
 
   React.useEffect(() => {
     if (defaultValues) {
@@ -77,6 +91,10 @@ export function ClienteForm({
   }, [defaultValues, form]);
 
   const handleGeocode = async () => {
+    if (!isMapsApiReady) {
+      toast({ title: "API de Mapas no lista", description: "Espere a que la API de Google Maps cargue.", variant: "default" });
+      return;
+    }
     const addressValue = form.getValues("direccion");
     if (!addressValue || addressValue.trim().length < 5) {
       toast({
@@ -177,11 +195,12 @@ export function ClienteForm({
                 <FormControl className="flex-grow">
                   <Input placeholder="Ej: Calle Falsa 123, Mar del Plata" {...field} />
                 </FormControl>
-                <Button type="button" onClick={handleGeocode} disabled={isGeocoding} variant="outline">
+                <Button type="button" onClick={handleGeocode} disabled={isGeocoding || !isMapsApiReady} variant="outline">
                   {isGeocoding ? <Loader2 className="h-4 w-4 animate-spin" /> : <MapPin className="h-4 w-4" />}
                    <span className="ml-2 hidden sm:inline">Verificar</span>
                 </Button>
               </div>
+              {!isMapsApiReady && <FormDescription className="text-orange-600">API de Mapas no disponible.</FormDescription>}
               {geocodedData?.formattedAddress && (
                 <FormDescription className="mt-1 text-green-600 flex items-center gap-1">
                  <CheckCircle size={16} /> Dirección verificada: {geocodedData.formattedAddress}
@@ -302,7 +321,7 @@ export function ClienteForm({
           )}
         />
 
-        <Button type="submit" className="w-full" disabled={isSubmitting || isGeocoding}>
+        <Button type="submit" className="w-full" disabled={isSubmitting || isGeocoding || !isMapsApiReady}>
           {(isSubmitting || isGeocoding) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           {submitButtonText}
         </Button>
@@ -310,3 +329,4 @@ export function ClienteForm({
     </Form>
   );
 }
+
