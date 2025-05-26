@@ -115,6 +115,8 @@ export type Database = {
       }
       envios: {
         Row: {
+          cliente_temporal_nombre: string | null
+          cliente_temporal_telefono: string | null
           created_at: string | null
           detalles_adicionales: string | null
           direccion_destino: string
@@ -145,6 +147,8 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
+          cliente_temporal_nombre?: string | null
+          cliente_temporal_telefono?: string | null
           created_at?: string | null
           detalles_adicionales?: string | null
           direccion_destino: string
@@ -165,7 +169,7 @@ export type Database = {
           notas_destino?: string | null
           notas_origen?: string | null
           peso_kg?: number | null
-          precio: number
+          precio?: number
           remitente_cliente_id?: string | null
           repartidor_asignado_id?: string | null
           telefono_destinatario?: string | null
@@ -175,6 +179,8 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
+          cliente_temporal_nombre?: string | null
+          cliente_temporal_telefono?: string | null
           created_at?: string | null
           detalles_adicionales?: string | null
           direccion_destino?: string
@@ -344,7 +350,7 @@ export type Database = {
         Row: {
           created_at: string | null
           empresa_asociada_id: string | null
-          estado: Database["public"]["Enums"]["estado_general_enum"] | null
+          estado: Database["public"]["Enums"]["estado_reparto_enum"] | null
           fecha_reparto: string
           id: string
           notas: string | null
@@ -355,7 +361,7 @@ export type Database = {
         Insert: {
           created_at?: string | null
           empresa_asociada_id?: string | null
-          estado?: Database["public"]["Enums"]["estado_general_enum"] | null
+          estado?: Database["public"]["Enums"]["estado_reparto_enum"] | null
           fecha_reparto: string
           id?: string
           notas?: string | null
@@ -366,7 +372,7 @@ export type Database = {
         Update: {
           created_at?: string | null
           empresa_asociada_id?: string | null
-          estado?: Database["public"]["Enums"]["estado_general_enum"] | null
+          estado?: Database["public"]["Enums"]["estado_reparto_enum"] | null
           fecha_reparto?: string
           id?: string
           notas?: string | null
@@ -513,6 +519,11 @@ export type Database = {
         | "visitada_exitosa"
         | "visitada_fallida"
       estado_repartidor_opciones: "activo" | "inactivo" | "en_descanso"
+      estado_reparto_enum:
+        | "planificado"
+        | "en_curso"
+        | "completado"
+        | "cancelado"
       estado_reparto_opciones:
         | "planificado"
         | "en_curso"
@@ -658,6 +669,12 @@ export const Constants = {
         "visitada_fallida",
       ],
       estado_repartidor_opciones: ["activo", "inactivo", "en_descanso"],
+      estado_reparto_enum: [
+        "planificado",
+        "en_curso",
+        "completado",
+        "cancelado",
+      ],
       estado_reparto_opciones: [
         "planificado",
         "en_curso",
