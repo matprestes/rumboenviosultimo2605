@@ -1,5 +1,5 @@
 
-'use server'; // Can be used client-side due to NEXT_PUBLIC, but good practice for potential future server use
+// REMOVED 'use server'; directive
 
 import { Loader, type LoaderOptions } from '@googlemaps/js-api-loader';
 
@@ -32,12 +32,12 @@ let googleMapsApiPromise: Promise<typeof google> | null = null;
 let loaderInstance: Loader | null = null;
 
 function getLoaderInstance(): Loader {
+  if (!API_KEY) {
+    // This check is more for type safety and preventing errors if API_KEY is somehow undefined later
+    // The initial console.warn should alert the developer.
+    throw new Error('Google Maps API key is not configured for Loader instantiation.');
+  }
   if (!loaderInstance) {
-    if (!API_KEY) {
-        // This case should ideally not be reached if API_KEY check is done before calling,
-        // but as a safeguard for the Loader constructor.
-        throw new Error('Google Maps API key is not configured for Loader instantiation.');
-    }
     loaderInstance = new Loader(loaderOptions);
   }
   return loaderInstance;
@@ -45,6 +45,8 @@ function getLoaderInstance(): Loader {
 
 export async function getGoogleMapsApi(): Promise<typeof google> {
   if (!API_KEY) {
+    // Return a rejected promise or throw an error if no API key is available.
+    // This prevents the Loader from being instantiated without an API key.
     return Promise.reject(new Error('Google Maps API key is not configured.'));
   }
   if (!googleMapsApiPromise) {
@@ -70,15 +72,21 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult | n
   }
 
   try {
-    const google = await getGoogleMapsApi(); // Uses the centralized loader
+    const google = await getGoogleMapsApi();
     const geocoder = new google.maps.Geocoder();
 
     const request: google.maps.GeocoderRequest = {
       address: address,
       componentRestrictions: {
         country: 'AR',
-        locality: 'Mar del Plata',
+        // Removing locality restriction to allow broader searches if address is slightly outside,
+        // then we verify with bounds.
+        // locality: 'Mar del Plata', 
       },
+       bounds: new google.maps.LatLngBounds(
+        { lat: MAR_DEL_PLATA_BOUNDS.south, lng: MAR_DEL_PLATA_BOUNDS.west },
+        { lat: MAR_DEL_PLATA_BOUNDS.north, lng: MAR_DEL_PLATA_BOUNDS.east }
+      ),
     };
 
     const response = await geocoder.geocode(request);
@@ -96,25 +104,31 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult | n
       result.address_components.forEach(component => {
         if (component.types.includes('locality')) {
           cityComponent = component.long_name;
-          if (component.long_name.toLowerCase().includes('mar del plata')) {
-            isInMarDelPlata = true;
-          }
         }
         if (component.types.includes('country')) {
           countryComponent = component.long_name;
         }
       });
-
-      if (!isInMarDelPlata) {
-        if (
-          lat >= MAR_DEL_PLATA_BOUNDS.south &&
-          lat <= MAR_DEL_PLATA_BOUNDS.north &&
-          lng >= MAR_DEL_PLATA_BOUNDS.west &&
-          lng <= MAR_DEL_PLATA_BOUNDS.east
-        ) {
-          isInMarDelPlata = true;
+      
+      // Primary check: is the result within our defined bounds?
+      if (
+        lat >= MAR_DEL_PLATA_BOUNDS.south &&
+        lat <= MAR_DEL_PLATA_BOUNDS.north &&
+        lng >= MAR_DEL_PLATA_BOUNDS.west &&
+        lng <= MAR_DEL_PLATA_BOUNDS.east
+      ) {
+        isInMarDelPlata = true;
+      } else {
+        // Secondary check: if locality is Mar del Plata, but it's slightly outside bounds (e.g. new developments)
+        // This might be too lenient, bounds check is usually better.
+        // For now, let's rely mostly on the bounds for the "is within Mar del Plata" check.
+        if (cityComponent.toLowerCase().includes('mar del plata')) {
+             console.warn('Address geocoded to Mar del Plata by locality, but outside defined bounds:', result.formatted_address, {lat,lng});
+             // Decide if this should still be considered valid. For now, we'll accept if locality matches.
+             isInMarDelPlata = true; 
         }
       }
+
 
       if (isInMarDelPlata) {
         return {
@@ -134,6 +148,11 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult | n
     }
   } catch (error) {
     console.error('Geocoding error:', error);
+    // If the error is specifically that the Google Maps API object is not loaded,
+    // it might indicate an issue with getGoogleMapsApi() not resolving or being called too early.
+    if (error instanceof Error && error.message.includes("google is not defined") || error instanceof Error && error.message.includes("Cannot read properties of undefined (reading 'Geocoder')")) {
+        console.error("Google Maps API might not have loaded correctly before geocodeAddress was called.");
+    }
     return null;
   }
 }
