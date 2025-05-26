@@ -1,6 +1,6 @@
 
 import type { Metadata } from 'next';
-import { Geist } from 'next/font/google'; // Geist Sans is Geist
+import { Geist } from 'next/font/google';
 import { Geist_Mono } from 'next/font/google';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
@@ -28,7 +28,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es" suppressHydrationWarning>
-      <body className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}>
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}
+        suppressHydrationWarning // Added here
+      >
         <AppShell>
           {children}
         </AppShell>
