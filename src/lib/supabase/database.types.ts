@@ -1,4 +1,3 @@
-
 export type Json =
   | string
   | number
@@ -12,9 +11,9 @@ export type Database = {
     Tables: {
       clientes: {
         Row: {
-          apellido: string | null
+          apellido: string
           created_at: string | null
-          direccion: string | null
+          direccion: string
           email: string | null
           empresa_id: string | null
           estado: Database["public"]["Enums"]["estado_general_enum"] | null
@@ -28,9 +27,9 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
-          apellido?: string | null
+          apellido: string
           created_at?: string | null
-          direccion?: string | null
+          direccion: string
           email?: string | null
           empresa_id?: string | null
           estado?: Database["public"]["Enums"]["estado_general_enum"] | null
@@ -44,9 +43,9 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
-          apellido?: string | null
+          apellido?: string
           created_at?: string | null
-          direccion?: string | null
+          direccion?: string
           email?: string | null
           empresa_id?: string | null
           estado?: Database["public"]["Enums"]["estado_general_enum"] | null
@@ -72,7 +71,7 @@ export type Database = {
       empresas: {
         Row: {
           created_at: string | null
-          direccion: string | null
+          direccion: string
           email: string | null
           estado: Database["public"]["Enums"]["estado_general_enum"] | null
           id: string
@@ -86,7 +85,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string | null
-          direccion?: string | null
+          direccion: string
           email?: string | null
           estado?: Database["public"]["Enums"]["estado_general_enum"] | null
           id?: string
@@ -100,7 +99,7 @@ export type Database = {
         }
         Update: {
           created_at?: string | null
-          direccion?: string | null
+          direccion?: string
           email?: string | null
           estado?: Database["public"]["Enums"]["estado_general_enum"] | null
           id?: string
@@ -117,29 +116,29 @@ export type Database = {
       envios: {
         Row: {
           created_at: string | null
-          detalles_adicionales: string | null // New field
+          detalles_adicionales: string | null
           direccion_destino: string
           direccion_origen: string
           empresa_destino_id: string | null
           empresa_origen_id: string | null
           estado: Database["public"]["Enums"]["estado_envio_enum"] | null
-          fecha_estimada_entrega: string | null // Changed to DATE type
-          horario_entrega_hasta: string | null // New field
-          horario_retiro_desde: string | null // New field
+          fecha_estimada_entrega: string | null
+          horario_entrega_hasta: string | null
+          horario_retiro_desde: string | null
           id: string
           latitud_destino: number | null
           latitud_origen: number | null
           longitud_destino: number | null
           longitud_origen: number | null
-          nombre_destinatario: string | null // New field
+          nombre_destinatario: string | null
           notas_conductor: string | null
           notas_destino: string | null
           notas_origen: string | null
           peso_kg: number | null
           precio: number
-          remitente_cliente_id: string | null // Was cliente_id
+          remitente_cliente_id: string | null
           repartidor_asignado_id: string | null
-          telefono_destinatario: string | null // New field
+          telefono_destinatario: string | null
           tipo_paquete_id: string | null
           tipo_servicio_id: string | null
           updated_at: string | null
@@ -221,7 +220,7 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "envios_remitente_cliente_id_fkey" // Updated FK name
+            foreignKeyName: "envios_remitente_cliente_id_fkey"
             columns: ["remitente_cliente_id"]
             isOneToOne: false
             referencedRelation: "clientes"
@@ -253,7 +252,8 @@ export type Database = {
       paradas_reparto: {
         Row: {
           created_at: string | null
-          envio_id: string
+          descripcion_parada: string | null
+          envio_id: string | null
           estado_parada: Database["public"]["Enums"]["estado_envio_enum"] | null
           hora_estimada_llegada: string | null
           hora_real_llegada: string | null
@@ -266,7 +266,8 @@ export type Database = {
         }
         Insert: {
           created_at?: string | null
-          envio_id: string
+          descripcion_parada?: string | null
+          envio_id?: string | null
           estado_parada?:
             | Database["public"]["Enums"]["estado_envio_enum"]
             | null
@@ -281,7 +282,8 @@ export type Database = {
         }
         Update: {
           created_at?: string | null
-          envio_id?: string
+          descripcion_parada?: string | null
+          envio_id?: string | null
           estado_parada?:
             | Database["public"]["Enums"]["estado_envio_enum"]
             | null
@@ -354,7 +356,7 @@ export type Database = {
           created_at?: string | null
           empresa_asociada_id?: string | null
           estado?: Database["public"]["Enums"]["estado_general_enum"] | null
-          fecha_reparto?: string
+          fecha_reparto: string
           id?: string
           notas?: string | null
           repartidor_id: string
@@ -504,7 +506,7 @@ export type Database = {
         | "entregado"
         | "cancelado"
         | "fallido"
-      estado_general_enum: "activo" | "inactivo" | "pendiente"
+      estado_general_enum: "activo" | "inactivo" | "pendiente" | "planificado"
       estado_opciones: "activo" | "inactivo"
       estado_parada_opciones:
         | "pendiente"
@@ -606,7 +608,7 @@ export type Enums<
   EnumName extends DefaultSchemaEnumNameOrOptions extends {
     schema: keyof Database
   }
-    ? keyof Database[DefaultSchemaTableNameOrOptions["schema"]]["Enums"]
+    ? keyof Database[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
     : never = never,
 > = DefaultSchemaEnumNameOrOptions extends { schema: keyof Database }
   ? Database[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
@@ -648,7 +650,7 @@ export const Constants = {
         "cancelado",
         "fallido",
       ],
-      estado_general_enum: ["activo", "inactivo", "pendiente"],
+      estado_general_enum: ["activo", "inactivo", "pendiente", "planificado"],
       estado_opciones: ["activo", "inactivo"],
       estado_parada_opciones: [
         "pendiente",
@@ -666,6 +668,3 @@ export const Constants = {
     },
   },
 } as const
-
-// You may need to run `npx supabase gen types typescript --project-id <your-project-id> --schema public > src/lib/supabase/database.types.ts` to update this file after schema changes.
-
