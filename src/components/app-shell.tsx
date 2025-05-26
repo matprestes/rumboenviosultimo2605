@@ -7,7 +7,7 @@ import { usePathname } from 'next/navigation';
 import {
   SidebarProvider,
   Sidebar,
-  SidebarHeader,
+  SidebarHeader, // This is from ui/sidebar
   SidebarContent,
   SidebarFooter,
   SidebarTrigger,
@@ -17,12 +17,12 @@ import {
   SidebarInset,
   useSidebar,
 } from '@/components/ui/sidebar';
+// SheetTitle should NOT be rendered here for the mobile sidebar's accessible title.
+// It will be handled by the Sidebar component itself when rendering as a Sheet.
 import { Button } from '@/components/ui/button';
 import { Home, Building2, Users, Truck, Package, ClipboardList, MapIcon, Settings, ShipWheel, Route, ClipboardPlus, Layers, ChevronRight } from 'lucide-react';
 import { Separator } from './ui/separator';
 import { cn } from "@/lib/utils";
-// SheetTitle should not be imported or used here directly for the mobile sidebar's accessible title.
-// That will be handled by the Sidebar component itself.
 
 const navItems = [
   { href: '/', label: 'Inicio', icon: Home },
@@ -58,7 +58,6 @@ function MainNavigation() {
       setOpenSubMenus({});
     }
   }, [open, isMobile]);
-
 
   return (
     <SidebarMenu>
@@ -129,10 +128,9 @@ function MainNavigation() {
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <SidebarProvider defaultOpen={true}>
-      <Sidebar>
-        <SidebarHeader className="p-4">
-          {/* Visual title elements are here. The accessible title for the mobile Sheet
-              is handled within the Sidebar component itself. */}
+      <Sidebar> {/* Sidebar from ui/sidebar.tsx */}
+        <SidebarHeader className="p-4"> {/* SidebarHeader from ui/sidebar.tsx */}
+          {/* Visual title elements */}
           <div className="flex items-center gap-2">
             <ShipWheel className="h-8 w-8 text-primary" />
             <div className="flex flex-col">

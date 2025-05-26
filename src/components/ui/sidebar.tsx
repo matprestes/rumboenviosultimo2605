@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
+// Import SheetHeader and SheetTitle here
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet" 
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -199,10 +200,14 @@ const Sidebar = React.forwardRef<
             }
             side={side}
           >
-            <SheetHeader className="sr-only"> {/* Visually hidden but present for accessibility */}
-              <SheetTitle>Menú Principal</SheetTitle>
+            {/* Accessible title for the sheet/dialog, directly within SheetContent */}
+            <SheetHeader> {/* SheetHeader from ui/sheet */}
+              <SheetTitle className="sr-only">Menú Principal</SheetTitle>
             </SheetHeader>
-            <div className="flex h-full w-full flex-col pt-0">{children}</div> {/* Ensure children (visual header + nav) are rendered after accessible title */}
+            {/* The actual visual header and content are passed as children */}
+            <div className="flex h-full w-full flex-col overflow-y-auto pt-0">
+              {children}
+            </div>
           </SheetContent>
         </Sheet>
       )
@@ -344,7 +349,7 @@ const SidebarInput = React.forwardRef<
 })
 SidebarInput.displayName = "SidebarInput"
 
-const SidebarHeader = React.forwardRef<
+const OriginalSidebarHeader = React.forwardRef< // Renamed to OriginalSidebarHeader
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
 >(({ className, ...props }, ref) => {
@@ -352,12 +357,16 @@ const SidebarHeader = React.forwardRef<
     <div
       ref={ref}
       data-sidebar="header"
-      className={cn("flex flex-col gap-2 p-2", className)}
+      className={cn("flex flex-col gap-2 p-2", className)} // Original p-2
       {...props}
     />
   )
 })
-SidebarHeader.displayName = "SidebarHeader"
+OriginalSidebarHeader.displayName = "SidebarHeader" // Still export as SidebarHeader if that's the public API
+
+// Exporting the original SidebarHeader as SidebarHeader, and also Sheet specific ones if needed.
+// For clarity in this file, let's assume the original SidebarHeader is what we want to export.
+export { OriginalSidebarHeader as SidebarHeader }
 
 
 const SidebarFooter = React.forwardRef<
@@ -732,11 +741,12 @@ export {
   Sidebar,
   SidebarContent,
   SidebarFooter,
+  // OriginalSidebarHeader as SidebarHeader, // Keep original export name if it's the public API
   SidebarGroup,
   SidebarGroupAction,
   SidebarGroupContent,
   SidebarGroupLabel,
-  SidebarHeader,
+  // SidebarHeader, // Re-exporting OriginalSidebarHeader as SidebarHeader
   SidebarInput,
   SidebarInset,
   SidebarMenu,
