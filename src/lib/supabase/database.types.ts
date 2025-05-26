@@ -116,88 +116,96 @@ export type Database = {
       }
       envios: {
         Row: {
-          cliente_id: string | null
-          cliente_temporal_nombre: string | null
-          cliente_temporal_telefono: string | null
           created_at: string | null
+          detalles_adicionales: string | null // New field
           direccion_destino: string
           direccion_origen: string
           empresa_destino_id: string | null
           empresa_origen_id: string | null
           estado: Database["public"]["Enums"]["estado_envio_enum"] | null
-          fecha_estimada_entrega: string | null
+          fecha_estimada_entrega: string | null // Changed to DATE type
+          horario_entrega_hasta: string | null // New field
+          horario_retiro_desde: string | null // New field
           id: string
           latitud_destino: number | null
           latitud_origen: number | null
           longitud_destino: number | null
           longitud_origen: number | null
+          nombre_destinatario: string | null // New field
           notas_conductor: string | null
+          notas_destino: string | null
+          notas_origen: string | null
           peso_kg: number | null
           precio: number
+          remitente_cliente_id: string | null // Was cliente_id
           repartidor_asignado_id: string | null
+          telefono_destinatario: string | null // New field
           tipo_paquete_id: string | null
           tipo_servicio_id: string | null
           updated_at: string | null
           user_id: string | null
         }
         Insert: {
-          cliente_id?: string | null
-          cliente_temporal_nombre?: string | null
-          cliente_temporal_telefono?: string | null
           created_at?: string | null
+          detalles_adicionales?: string | null
           direccion_destino: string
           direccion_origen: string
           empresa_destino_id?: string | null
           empresa_origen_id?: string | null
           estado?: Database["public"]["Enums"]["estado_envio_enum"] | null
           fecha_estimada_entrega?: string | null
+          horario_entrega_hasta?: string | null
+          horario_retiro_desde?: string | null
           id?: string
           latitud_destino?: number | null
           latitud_origen?: number | null
           longitud_destino?: number | null
           longitud_origen?: number | null
+          nombre_destinatario?: string | null
           notas_conductor?: string | null
+          notas_destino?: string | null
+          notas_origen?: string | null
           peso_kg?: number | null
           precio: number
+          remitente_cliente_id?: string | null
           repartidor_asignado_id?: string | null
+          telefono_destinatario?: string | null
           tipo_paquete_id?: string | null
           tipo_servicio_id?: string | null
           updated_at?: string | null
           user_id?: string | null
         }
         Update: {
-          cliente_id?: string | null
-          cliente_temporal_nombre?: string | null
-          cliente_temporal_telefono?: string | null
           created_at?: string | null
+          detalles_adicionales?: string | null
           direccion_destino?: string
           direccion_origen?: string
           empresa_destino_id?: string | null
           empresa_origen_id?: string | null
           estado?: Database["public"]["Enums"]["estado_envio_enum"] | null
           fecha_estimada_entrega?: string | null
+          horario_entrega_hasta?: string | null
+          horario_retiro_desde?: string | null
           id?: string
           latitud_destino?: number | null
           latitud_origen?: number | null
           longitud_destino?: number | null
           longitud_origen?: number | null
+          nombre_destinatario?: string | null
           notas_conductor?: string | null
+          notas_destino?: string | null
+          notas_origen?: string | null
           peso_kg?: number | null
           precio?: number
+          remitente_cliente_id?: string | null
           repartidor_asignado_id?: string | null
+          telefono_destinatario?: string | null
           tipo_paquete_id?: string | null
           tipo_servicio_id?: string | null
           updated_at?: string | null
           user_id?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "envios_cliente_id_fkey"
-            columns: ["cliente_id"]
-            isOneToOne: false
-            referencedRelation: "clientes"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "envios_empresa_destino_id_fkey"
             columns: ["empresa_destino_id"]
@@ -210,6 +218,13 @@ export type Database = {
             columns: ["empresa_origen_id"]
             isOneToOne: false
             referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "envios_remitente_cliente_id_fkey" // Updated FK name
+            columns: ["remitente_cliente_id"]
+            isOneToOne: false
+            referencedRelation: "clientes"
             referencedColumns: ["id"]
           },
           {
@@ -591,7 +606,7 @@ export type Enums<
   EnumName extends DefaultSchemaEnumNameOrOptions extends {
     schema: keyof Database
   }
-    ? keyof Database[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    ? keyof Database[DefaultSchemaTableNameOrOptions["schema"]]["Enums"]
     : never = never,
 > = DefaultSchemaEnumNameOrOptions extends { schema: keyof Database }
   ? Database[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
@@ -651,3 +666,6 @@ export const Constants = {
     },
   },
 } as const
+
+// You may need to run `npx supabase gen types typescript --project-id <your-project-id> --schema public > src/lib/supabase/database.types.ts` to update this file after schema changes.
+
