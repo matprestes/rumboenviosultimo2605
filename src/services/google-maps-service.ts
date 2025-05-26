@@ -1,5 +1,5 @@
 
-// REMOVED 'use server'; directive if it was present. This module is for client-side Google Maps API interaction.
+// REMOVED 'use server'; directive. This module is for client-side Google Maps API interaction.
 
 import { Loader, type LoaderOptions } from '@googlemaps/js-api-loader';
 
@@ -12,7 +12,7 @@ const MAR_DEL_PLATA_BOUNDS = { // Approximate bounding box for Mar del Plata
 
 const API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
-if (!API_KEY && typeof window !== 'undefined') { // Check for window to avoid server-side warnings during build
+if (!API_KEY && typeof window !== 'undefined') {
   console.warn(
     'Google Maps API key is missing. Geocoding and maps will not work. Set NEXT_PUBLIC_GOOGLE_MAPS_API_KEY in your .env.local file.'
   );
@@ -29,12 +29,10 @@ const loaderOptions: LoaderOptions = {
 };
 
 let googleMapsApiPromise: Promise<typeof google> | null = null;
-let loaderInstance: Loader | null = null;
+let loaderInstance: Loader | null = null; // Keep a single instance of the Loader
 
 function getLoaderInstance(): Loader {
   if (!API_KEY) {
-    // This case should ideally be handled by the API_KEY check above or in consuming components
-    // For robustness, we'll still throw if somehow instantiated without an API key at this stage
     throw new Error('Google Maps API key is not configured for Loader instantiation.');
   }
   if (!loaderInstance) {
@@ -45,18 +43,29 @@ function getLoaderInstance(): Loader {
 
 export async function getGoogleMapsApi(): Promise<typeof google> {
   if (typeof window === 'undefined') {
-    // Prevent execution on the server during build/SSR for non-Server Action contexts
     return Promise.reject(new Error('Google Maps API cannot be loaded on the server. Call from client-side component.'));
   }
   if (!API_KEY) {
     return Promise.reject(new Error('Google Maps API key is not configured.'));
   }
+
   if (!googleMapsApiPromise) {
+    // Ensures Loader is instantiated only once and load is called only once on that instance.
     const loader = getLoaderInstance();
     googleMapsApiPromise = loader.load().catch(err => {
-      console.error("Failed to load Google Maps API via Loader:", err);
+      console.error("Failed to load Google Maps API via Loader in service:", err);
       googleMapsApiPromise = null; // Reset promise on failure to allow retry if applicable
-      throw err; // Re-throw to be caught by calling code
+      // Check if the error message from the loader or a related global error indicates ApiNotActivatedMapError
+      // This is a heuristic as the loader itself might not pass the exact Google error object directly.
+      // The browser console will show the "ApiNotActivatedMapError" directly from Google's script.
+      let userFriendlyMessage = 'Failed to load Google Maps API. Please check the browser console for details from Google.';
+      if (err && typeof err.message === 'string' && err.message.toLowerCase().includes('network error')) {
+        userFriendlyMessage = 'Network error while trying to load Google Maps API. Please check your internet connection.';
+      } else {
+        // Generic advice if API loading failed, which can be due to ApiNotActivatedMapError
+         userFriendlyMessage = 'Failed to initialize Google Maps. Please ensure the API key is correct, billing is enabled, and the "Maps JavaScript API" is activated in your Google Cloud Console. Check browser console for more specific errors from Google.';
+      }
+      throw new Error(userFriendlyMessage);
     });
   }
   return googleMapsApiPromise;
@@ -70,30 +79,30 @@ export interface GeocodeResult {
   country?: string;
 }
 
-// This function is intended for client-side use only as it uses the JS Maps API
 export async function geocodeAddress(address: string): Promise<GeocodeResult | null> {
-  if (typeof window === 'undefined' || typeof google === 'undefined' || typeof google.maps === 'undefined') {
-    console.warn('geocodeAddress called in a non-browser environment or before Maps API loaded.');
+  if (typeof window === 'undefined') {
+    console.warn('geocodeAddress called in a non-browser environment.');
     return null;
   }
-  if (!API_KEY) {
+   if (!API_KEY) {
     console.error('Geocoding skipped: Google Maps API key is missing.');
     return null;
   }
 
   try {
-    // getGoogleMapsApi ensures the 'google' object is loaded.
-    // However, geocodeAddress might be called before the promise from getGoogleMapsApi resolves in some components.
-    // A robust way is to ensure 'google' is available directly.
-    const maps = (await getGoogleMapsApi()).maps;
-    const geocoder = new maps.Geocoder();
+    const google = await getGoogleMapsApi(); // Ensures API is loaded before trying to use it
+    if (!google || !google.maps || !google.maps.Geocoder) {
+        console.error('Google Maps Geocoder API is not available after load attempt.');
+        return null;
+    }
+    const geocoder = new google.maps.Geocoder();
 
     const request: google.maps.GeocoderRequest = {
       address: address,
       componentRestrictions: {
         country: 'AR',
       },
-       bounds: new maps.LatLngBounds(
+      bounds: new google.maps.LatLngBounds(
         { lat: MAR_DEL_PLATA_BOUNDS.south, lng: MAR_DEL_PLATA_BOUNDS.west },
         { lat: MAR_DEL_PLATA_BOUNDS.north, lng: MAR_DEL_PLATA_BOUNDS.east }
       ),
@@ -143,6 +152,10 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult | n
     }
   } catch (error) {
     console.error('Geocoding error in geocodeAddress:', error);
-    return null;
+    // If the error from getGoogleMapsApi was already specific, re-throw it or a new one.
+    if (error instanceof Error && error.message.includes("Google Maps JavaScript API is not activated")) {
+        throw error; // Re-throw specific error
+    }
+    return null; // Or throw a new generic geocoding error
   }
 }
