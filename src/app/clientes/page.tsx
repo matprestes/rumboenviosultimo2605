@@ -2,18 +2,9 @@
 "use client";
 
 import * as React from 'react';
+import Link from 'next/link'; // Added Link import
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogHeader, 
-  DialogTitle, 
-  DialogTrigger, 
-  DialogDescription, 
-  DialogFooter,
-  DialogClose
-} from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,30 +14,30 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  // AlertDialogTrigger, // Removed
 } from "@/components/ui/alert-dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Users, PlusCircle, Loader2, Edit, Trash2, MapPinIcon } from "lucide-react";
-import { ClienteForm } from "@/components/forms/cliente-form";
-import type { Cliente, Empresa } from '@/lib/schemas'; // Import Empresa type
+// Removed ClienteForm import as it's no longer used in a dialog here
+import type { Cliente, Empresa as EmpresaType } from '@/lib/schemas';
 import { supabase } from '@/lib/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
+import { useRouter } from 'next/navigation'; // Added for navigation
 
-interface EmpresaOption {
+interface EmpresaOption { // This can be simplified if not used elsewhere
   id: string;
   nombre: string;
 }
 
 export default function ClientesPage() {
   const { toast } = useToast();
+  const router = useRouter(); // For navigation
   const [clientes, setClientes] = React.useState<Cliente[]>([]);
-  const [empresas, setEmpresas] = React.useState<EmpresaOption[]>([]);
+  // Removed empresas state as it's fetched on the /clientes/nuevo page
   const [isLoading, setIsLoading] = React.useState(true);
-  const [isLoadingEmpresas, setIsLoadingEmpresas] = React.useState(true);
-  const [isDialogOpen, setIsDialogOpen] = React.useState(false);
-  const [editingCliente, setEditingCliente] = React.useState<Cliente | null>(null);
-  const [isSubmitting, setIsSubmitting] = React.useState(false);
+  // Removed isLoadingEmpresas
+  // Removed isDialogOpen and editingCliente states
+  const [isDeleting, setIsDeleting] = React.useState(false); // Renamed from isSubmitting for clarity
   const [clienteToDelete, setClienteToDelete] = React.useState<Cliente | null>(null);
 
 
@@ -54,13 +45,13 @@ export default function ClientesPage() {
     setIsLoading(true);
     const { data, error } = await supabase
       .from('clientes')
-      .select(`
+      .select(\`
         *,
         empresas (
           id,
           nombre
         )
-      `)
+      \`)
       .order('apellido', { ascending: true })
       .order('nombre', { ascending: true });
 
@@ -78,100 +69,23 @@ export default function ClientesPage() {
     setIsLoading(false);
   }, [toast]);
 
-  const fetchEmpresas = React.useCallback(async () => {
-    setIsLoadingEmpresas(true);
-    const { data, error } = await supabase
-      .from('empresas')
-      .select('id, nombre')
-      .eq('estado', 'activo');
-
-    if (error) {
-      console.error("Error fetching empresas:", error);
-      toast({
-        title: "Error al Cargar Empresas",
-        description: "No se pudieron cargar las empresas para el formulario.",
-        variant: "destructive",
-      });
-      setEmpresas([]);
-    } else {
-      setEmpresas(data || []);
-    }
-    setIsLoadingEmpresas(false);
-  }, [toast]);
-
   React.useEffect(() => {
     fetchClientes();
-    fetchEmpresas();
-  }, [fetchClientes, fetchEmpresas]);
+    // Removed fetchEmpresas call
+  }, [fetchClientes]);
 
-  const handleFormSubmit = async (formData: Cliente) => {
-    setIsSubmitting(true);
-    try {
-      let error;
-      let successMessage;
-      
-      const dataToUpsert = {
-        nombre: formData.nombre,
-        apellido: formData.apellido,
-        direccion: formData.direccion,
-        latitud: formData.latitud,
-        longitud: formData.longitud,
-        telefono: formData.telefono,
-        email: formData.email,
-        empresa_id: formData.empresa_id === 'no_empresa' ? null : formData.empresa_id,
-        notas: formData.notas,
-        estado: formData.estado,
-      };
+  // Removed handleFormSubmit as creation/editing is on separate pages
 
-      if (editingCliente && editingCliente.id) {
-        // Update
-        const { error: updateError } = await supabase
-          .from('clientes')
-          .update(dataToUpsert)
-          .eq('id', editingCliente.id);
-        error = updateError;
-        successMessage = `El cliente "${formData.nombre} ${formData.apellido}" ha sido actualizado.`;
-      } else {
-        // Create
-        const { error: insertError } = await supabase.from('clientes').insert([dataToUpsert]);
-        error = insertError;
-        successMessage = `El cliente "${formData.nombre} ${formData.apellido}" ha sido creado.`;
-      }
-
-      if (error) throw error;
-
-      toast({
-        title: editingCliente ? "Cliente Actualizado" : "Cliente Creado",
-        description: successMessage,
-      });
-      setIsDialogOpen(false);
-      setEditingCliente(null);
-      fetchClientes();
-    } catch (error: any) {
-      console.error("Error saving cliente:", error);
-      toast({
-        title: `Error al ${editingCliente ? 'Actualizar' : 'Crear'} Cliente`,
-        description: error.message || "Ocurrió un error inesperado.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-  
   const handleEdit = (cliente: Cliente) => {
-    setEditingCliente(cliente);
-    setIsDialogOpen(true);
+    // router.push(`/clientes/${cliente.id}/editar`); // Future edit page
+    toast({ title: "Info", description: `La edición de "${cliente.nombre} ${cliente.apellido}" se implementará en una página dedicada.`});
   };
 
-  const openNewClienteDialog = () => {
-    setEditingCliente(null);
-    setIsDialogOpen(true);
-  };
+  // Removed openNewClienteDialog
 
   const handleDeleteConfirm = async () => {
     if (!clienteToDelete || !clienteToDelete.id) return;
-    setIsSubmitting(true);
+    setIsDeleting(true);
     try {
       const { error } = await supabase
         .from('clientes')
@@ -193,7 +107,7 @@ export default function ClientesPage() {
         variant: "destructive",
       });
     } finally {
-      setIsSubmitting(false);
+      setIsDeleting(false);
     }
   };
 
@@ -209,47 +123,15 @@ export default function ClientesPage() {
             Administra los clientes de Rumbos Envíos.
           </p>
         </div>
-        <Button onClick={openNewClienteDialog} disabled={isLoadingEmpresas}>
-          {isLoadingEmpresas ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PlusCircle className="mr-2 h-4 w-4" />}
-          Nuevo Cliente
+        <Button asChild> 
+          <Link href="/clientes/nuevo">
+            <PlusCircle className="mr-2 h-4 w-4" />
+            Nuevo Cliente
+          </Link>
         </Button>
       </header>
       
-      <Dialog open={isDialogOpen} onOpenChange={(isOpen) => {
-        setIsDialogOpen(isOpen);
-        if (!isOpen) setEditingCliente(null);
-      }}>
-        <DialogContent className="sm:max-w-[625px]">
-          <DialogHeader>
-            <DialogTitle>{editingCliente ? "Editar Cliente" : "Crear Nuevo Cliente"}</DialogTitle>
-            <DialogDescription>
-              {editingCliente ? "Modifique los detalles del cliente." : "Complete los detalles del nuevo cliente."} Haga clic en guardar cuando haya terminado.
-            </DialogDescription>
-          </DialogHeader>
-          {isLoadingEmpresas && !editingCliente ? ( // Show loader only for new client form if empresas are loading
-            <div className="flex justify-center items-center h-40">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" /> 
-              <p className="ml-2">Cargando datos de empresas...</p>
-            </div>
-          ) : (
-            <ClienteForm 
-              key={editingCliente ? editingCliente.id : 'new'}
-              onSubmit={handleFormSubmit}
-              defaultValues={editingCliente || undefined}
-              empresas={empresas}
-              isSubmitting={isSubmitting}
-              submitButtonText={editingCliente ? "Actualizar Cliente" : "Guardar Cliente"}
-            />
-          )}
-          <DialogFooter>
-              <DialogClose asChild>
-                  <Button variant="outline" disabled={isSubmitting || (isLoadingEmpresas && !editingCliente)}>
-                      Cancelar
-                  </Button>
-              </DialogClose>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Dialog for creation/editing removed */}
 
       <AlertDialog open={!!clienteToDelete} onOpenChange={(isOpen) => !isOpen && setClienteToDelete(null)}>
         <AlertDialogContent>
@@ -260,20 +142,20 @@ export default function ClientesPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isSubmitting}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteConfirm} disabled={isSubmitting} className="bg-destructive hover:bg-destructive/90">
-              {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteConfirm} disabled={isDeleting} className="bg-destructive hover:bg-destructive/90">
+              {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Eliminar
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
       
-      <Card>
+      <Card className="rounded-2xl">
         <CardHeader>
           <CardTitle>Listado de Clientes</CardTitle>
           <CardDescription>
-            Aquí podrás ver, crear, editar y eliminar clientes.
+            Aquí podrás ver y eliminar clientes. La edición se hará en una página dedicada.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -302,7 +184,8 @@ export default function ClientesPage() {
               </TableHeader>
               <TableBody>
                 {clientes.map((cliente) => {
-                  const empresaAsociada = cliente.empresas as unknown as EmpresaOption | null; // Type assertion
+                  // Type assertion for empresaAsociada to help TypeScript
+                  const empresaAsociada = cliente.empresas as unknown as EmpresaOption | null;
                   return (
                     <TableRow key={cliente.id}>
                       <TableCell className="font-medium">{cliente.nombre} {cliente.apellido}</TableCell>
@@ -320,11 +203,11 @@ export default function ClientesPage() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button variant="ghost" size="icon" onClick={() => handleEdit(cliente)} title="Editar">
+                        <Button variant="ghost" size="icon" onClick={() => handleEdit(cliente)} title="Editar (Próximamente)">
                           <Edit className="h-4 w-4" />
                         </Button>
                         <Button variant="ghost" size="icon" onClick={() => setClienteToDelete(cliente)} title="Eliminar">
-                          <Trash2 className="h-4 w-4 text-destructive" />
+                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -338,3 +221,4 @@ export default function ClientesPage() {
     </div>
   );
 }
+
