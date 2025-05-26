@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { PackagePlus, Users, Truck, ListChecks, FilePlus, Building } from "lucide-react";
+import { Badge } from "@/components/ui/badge"; // Added Badge import
 
 export default function DashboardPage() {
   return (
@@ -19,7 +20,7 @@ export default function DashboardPage() {
       <section>
         <h2 className="text-2xl font-semibold tracking-tight text-foreground mb-4">Accesos Rápidos</h2>
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          <Card className="shadow-md hover:shadow-lg transition-shadow flex flex-col bg-muted">
+          <Card className="shadow-md hover:shadow-lg transition-shadow flex flex-col bg-muted rounded-2xl">
             <CardHeader className="pb-3">
               <div className="flex items-start gap-3">
                 <PackagePlus className="h-10 w-10 text-primary mt-1" strokeWidth={2.5} />
@@ -48,31 +49,41 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          <Card className="shadow-md hover:shadow-lg transition-shadow flex flex-col">
+          <Card className="shadow-sm hover:shadow-lg transition-shadow flex flex-col rounded-2xl">
             <CardHeader className="pb-3">
-               <div className="flex items-start gap-3">
-                <Users className="h-10 w-10 text-primary mt-1" />
+              <div className="flex items-start gap-3">
+                <Users className="h-10 w-10 text-accent mt-1" strokeWidth={2.5} />
                 <div>
-                  <CardTitle className="text-xl">Gestionar Clientes</CardTitle>
+                  <CardTitle className="text-xl text-accent">Gestionar Clientes y Empresas</CardTitle>
                   <CardDescription className="text-sm">
-                    Administra tu base de datos de clientes y empresas asociadas.
+                    Administra tu base de datos de clientes (individuales o vinculados) y las empresas asociadas.
                   </CardDescription>
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="flex-grow flex flex-col justify-end">
-              <Button asChild className="w-full">
-                <Link href="/clientes">Ver Clientes</Link>
-              </Button>
+            <CardContent className="flex-grow flex flex-col justify-between">
+              <div className="mb-4 space-y-1.5">
+                <Badge variant="secondary">Clientes activos</Badge>
+                <Badge variant="secondary" className="ml-2">Empresas registradas</Badge>
+                <p className="text-xs text-muted-foreground italic mt-1"> (Contadores dinámicos próximamente)</p>
+              </div>
+              <div className="space-y-2">
+                <Button asChild className="w-full bg-accent hover:bg-accent/90 text-accent-foreground">
+                  <Link href="/clientes">Gestionar Clientes</Link>
+                </Button>
+                <Button asChild variant="outline" className="w-full">
+                  <Link href="/empresas">Gestionar Empresas</Link>
+                </Button>
+              </div>
             </CardContent>
           </Card>
 
-          <Card className="shadow-md hover:shadow-lg transition-shadow flex flex-col">
+          <Card className="shadow-md hover:shadow-lg transition-shadow flex flex-col rounded-2xl">
             <CardHeader className="pb-3">
                <div className="flex items-start gap-3">
-                <Truck className="h-10 w-10 text-primary mt-1" />
+                <Truck className="h-10 w-10 text-primary mt-1" strokeWidth={2.5} />
                  <div>
-                  <CardTitle className="text-xl">Asignar Repartos</CardTitle>
+                  <CardTitle className="text-xl text-primary">Asignar Repartos</CardTitle>
                   <CardDescription className="text-sm">
                     Organiza y asigna envíos a tus repartidores para optimizar rutas.
                   </CardDescription>
@@ -81,7 +92,7 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent className="flex-grow flex flex-col justify-end">
                <div className="space-y-2">
-                <Button asChild className="w-full">
+                <Button asChild className="w-full bg-primary hover:bg-primary/90 text-primary-foreground">
                   <Link href="/repartos/nuevo">Nuevo Reparto Individual</Link>
                 </Button>
                  <Button asChild variant="outline" className="w-full">
@@ -99,7 +110,7 @@ export default function DashboardPage() {
       <section>
         <h2 className="text-2xl font-semibold tracking-tight text-foreground mb-4">Otras Gestiones</h2>
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          <Card className="shadow-md hover:shadow-lg transition-shadow">
+          <Card className="shadow-md hover:shadow-lg transition-shadow rounded-2xl">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg"><Building className="text-accent" /> Empresas</CardTitle>
             </CardHeader>
@@ -108,7 +119,7 @@ export default function DashboardPage() {
               <Button asChild className="w-full" variant="outline"><Link href="/empresas">Gestionar Empresas</Link></Button>
             </CardContent>
           </Card>
-          <Card className="shadow-md hover:shadow-lg transition-shadow">
+          <Card className="shadow-md hover:shadow-lg transition-shadow rounded-2xl">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg"><ListChecks className="text-accent" /> Repartidores</CardTitle>
             </CardHeader>
@@ -117,7 +128,7 @@ export default function DashboardPage() {
               <Button asChild className="w-full" variant="outline"><Link href="/repartidores">Gestionar Repartidores</Link></Button>
             </CardContent>
           </Card>
-           <Card className="shadow-md hover:shadow-lg transition-shadow">
+           <Card className="shadow-md hover:shadow-lg transition-shadow rounded-2xl">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg"><FilePlus className="text-accent" /> Dos Ruedas</CardTitle>
             </CardHeader>
