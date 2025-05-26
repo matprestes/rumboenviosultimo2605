@@ -1,3 +1,4 @@
+
 import { z } from 'zod';
 
 // Enum for estado
@@ -8,7 +9,7 @@ export type Estado = z.infer<typeof EstadoEnum>;
 
 // --- Empresa Schemas ---
 export const EmpresaSchema = z.object({
-  id: z.string().uuid().optional(), // Optional for creation, present for update
+  id: z.string().uuid().optional(), // Optional for creation, present for update/display
   nombre: z.string().min(2, "El nombre de la empresa es requerido y debe tener al menos 2 caracteres."),
   direccion: z.string().min(5, "La dirección es requerida y debe tener al menos 5 caracteres."),
   latitud: z.number().optional().nullable(),
@@ -17,11 +18,11 @@ export const EmpresaSchema = z.object({
   email: z.string().email("Ingrese un email válido.").optional().nullable(),
   notas: z.string().optional().nullable(),
   estado: EstadoEnum,
-  created_at: z.string().datetime().optional(),
-  updated_at: z.string().datetime().optional(),
+  created_at: z.string().datetime().optional(), // Supabase provides this
+  updated_at: z.string().datetime().optional(), // Supabase provides this
 });
 export type Empresa = z.infer<typeof EmpresaSchema>;
-export type EmpresaFormValues = Omit<Empresa, 'id' | 'created_at' | 'updated_at' | 'latitud' | 'longitud'>; // For form input, lat/lon handled separately
+export type EmpresaFormValues = Omit<Empresa, 'id' | 'created_at' | 'updated_at'>;
 
 // --- Cliente Schemas ---
 export const ClienteSchema = z.object({
@@ -40,7 +41,7 @@ export const ClienteSchema = z.object({
   updated_at: z.string().datetime().optional(),
 });
 export type Cliente = z.infer<typeof ClienteSchema>;
-export type ClienteFormValues = Omit<Cliente, 'id' | 'created_at' | 'updated_at' | 'latitud' | 'longitud'>;
+export type ClienteFormValues = Omit<Cliente, 'id' | 'created_at' | 'updated_at'>;
 
 // --- Repartidor Schemas ---
 export const RepartidorSchema = z.object({
@@ -55,8 +56,6 @@ export type RepartidorFormValues = Omit<Repartidor, 'id' | 'created_at' | 'updat
 
 
 // --- Original Schemas from previous step (AddressInputForm & ShipmentRequestForm) ---
-// Keeping them here for context, but they might be refactored or integrated later.
-
 const addressSchema = z.object({
   street: z.string().min(3, "La calle es requerida y debe tener al menos 3 caracteres."),
   city: z.string().min(2, "La ciudad es requerida y debe tener al menos 2 caracteres."),

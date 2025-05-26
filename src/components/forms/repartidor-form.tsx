@@ -4,7 +4,7 @@
 import type * as React from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { RepartidorSchema, type RepartidorFormValues, EstadoEnum } from '@/lib/schemas';
+import { RepartidorSchema, type Repartidor, type RepartidorFormValues, EstadoEnum } from '@/lib/schemas';
 import { Button } from '@/components/ui/button';
 import {
   Form,
@@ -25,8 +25,8 @@ import {
 import { Loader2 } from 'lucide-react';
 
 interface RepartidorFormProps {
-  onSubmit: (data: RepartidorFormValues) => Promise<void>;
-  defaultValues?: Partial<RepartidorFormValues>;
+  onSubmit: (data: Repartidor) => Promise<void>; // Changed to accept full Repartidor
+  defaultValues?: Partial<Repartidor>; // Use full Repartidor
   isSubmitting?: boolean;
   submitButtonText?: string;
 }
@@ -37,17 +37,34 @@ export function RepartidorForm({
   isSubmitting = false,
   submitButtonText = "Guardar Repartidor"
 }: RepartidorFormProps) {
-  const form = useForm<RepartidorFormValues>({
-    resolver: zodResolver(RepartidorSchema.omit({ id: true, created_at: true, updated_at: true })),
+  const form = useForm<Repartidor>({ // Use full Repartidor
+    resolver: zodResolver(RepartidorSchema.omit({ created_at: true, updated_at: true })),
     defaultValues: {
-      estado: "activo", // Default to active
+      estado: "activo",
       ...defaultValues,
     },
   });
 
+  React.useEffect(() => {
+    if (defaultValues) {
+      form.reset({
+        estado: "activo",
+        ...defaultValues,
+      });
+    }
+  }, [defaultValues, form]);
+
+  const handleFormSubmit = async (data: Repartidor) => {
+    const dataToSubmit: Repartidor = {
+      ...data,
+      id: defaultValues?.id || data.id,
+    };
+    await onSubmit(dataToSubmit);
+  };
+
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+      <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-6">
         <FormField
           control={form.control}
           name="nombre"

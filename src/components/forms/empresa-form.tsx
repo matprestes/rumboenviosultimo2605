@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { EmpresaSchema, type EmpresaFormValues, EstadoEnum } from '@/lib/schemas';
+import { EmpresaSchema, type Empresa, type EmpresaFormValues, EstadoEnum } from '@/lib/schemas';
 import { Button } from '@/components/ui/button';
 import {
   Form,
@@ -29,8 +29,8 @@ import { geocodeAddress, type GeocodeResult } from '@/services/google-maps-servi
 import { useToast } from '@/hooks/use-toast';
 
 interface EmpresaFormProps {
-  onSubmit: (data: EmpresaFormValues & { latitud?: number | null; longitud?: number | null }) => Promise<void>;
-  defaultValues?: Partial<EmpresaFormValues & { latitud?: number | null; longitud?: number | null }>;
+  onSubmit: (data: Empresa) => Promise<void>; // Changed to accept full Empresa for updates
+  defaultValues?: Partial<Empresa>; // Use full Empresa for defaultValues
   isSubmitting?: boolean;
   submitButtonText?: string;
 }
@@ -43,17 +43,32 @@ export function EmpresaForm({
 }: EmpresaFormProps) {
   const { toast } = useToast();
   const [isGeocoding, setIsGeocoding] = React.useState(false);
-  const [geocodedData, setGeocodedData] = React.useState<GeocodeResult | null>(null);
+  const [geocodedData, setGeocodedData] = React.useState<GeocodeResult | null>(
+    defaultValues?.latitud && defaultValues?.longitud && defaultValues?.direccion ? { lat: defaultValues.latitud, lng: defaultValues.longitud, formattedAddress: defaultValues.direccion } : null
+  );
 
-  const form = useForm<EmpresaFormValues & { latitud?: number | null; longitud?: number | null }>({
-    resolver: zodResolver(EmpresaSchema.omit({ id: true, created_at: true, updated_at: true, latitud: true, longitud: true })),
+  const form = useForm<Empresa>({ // Use full Empresa for form type
+    resolver: zodResolver(EmpresaSchema.omit({ created_at: true, updated_at: true })), // ID is optional for create, present for update
     defaultValues: {
-      estado: "activo", // Default to active
-      latitud: null,
-      longitud: null,
+      estado: "activo",
       ...defaultValues,
     },
   });
+
+  React.useEffect(() => {
+    if (defaultValues) {
+      form.reset({
+        estado: "activo", // Ensure default state
+        ...defaultValues,
+      });
+      if (defaultValues.latitud && defaultValues.longitud && defaultValues.direccion) {
+        setGeocodedData({ lat: defaultValues.latitud, lng: defaultValues.longitud, formattedAddress: defaultValues.direccion });
+      } else {
+        setGeocodedData(null);
+      }
+    }
+  }, [defaultValues, form]);
+
 
   const handleGeocode = async () => {
     const addressValue = form.getValues("direccion");
@@ -72,12 +87,10 @@ export function EmpresaForm({
       if (result) {
         form.setValue("latitud", result.lat, { shouldValidate: true });
         form.setValue("longitud", result.lng, { shouldValidate: true });
-        // Optionally update the address field with Google's formatted version
-        // form.setValue("direccion", result.formattedAddress, { shouldValidate: true }); 
         setGeocodedData(result);
         toast({
           title: "Geocodificación Exitosa",
-          description: `Dirección encontrada: ${result.formattedAddress}`,
+          description: `Dirección verificada: ${result.formattedAddress}`,
           variant: "default",
         });
       } else {
@@ -103,10 +116,11 @@ export function EmpresaForm({
     }
   };
 
-  const handleFormSubmit = async (data: EmpresaFormValues & { latitud?: number | null; longitud?: number | null }) => {
-    const dataToSubmit = {
+  const handleFormSubmit = async (data: Empresa) => {
+    const dataToSubmit: Empresa = {
       ...data,
-      latitud: form.getValues("latitud"), // Ensure latest geocoded values are included
+      id: defaultValues?.id || data.id, // Ensure ID is passed for updates
+      latitud: form.getValues("latitud"),
       longitud: form.getValues("longitud"),
     };
     await onSubmit(dataToSubmit);
@@ -145,12 +159,12 @@ export function EmpresaForm({
                   <span className="ml-2 hidden sm:inline">Verificar</span>
                 </Button>
               </div>
-              {geocodedData && (
+              {geocodedData?.formattedAddress && (
                 <FormDescription className="mt-1 text-green-600 flex items-center gap-1">
                   <CheckCircle size={16} /> Dirección verificada: {geocodedData.formattedAddress}
                 </FormDescription>
               )}
-              {!isGeocoding && form.formState.dirtyFields.direccion && !geocodedData && (
+              {!isGeocoding && form.formState.dirtyFields.direccion && !geocodedData?.formattedAddress && (
                  <FormDescription className="mt-1 text-orange-600 flex items-center gap-1">
                   <AlertTriangle size={16}/>  Verifique la dirección para obtener coordenadas.
                 </FormDescription>
@@ -159,9 +173,8 @@ export function EmpresaForm({
             </FormItem>
           )}
         />
-         {/* Hidden fields for lat/lng, controller ensures they are part of form state */}
-        <Controller control={form.control} name="latitud" render={({ field }) => <input type="hidden" {...field} />} />
-        <Controller control={form.control} name="longitud" render={({ field }) => <input type="hidden" {...field} />} />
+        <Controller control={form.control} name="latitud" render={({ field }) => <input type="hidden" {...field} value={field.value ?? ""} />} />
+        <Controller control={form.control} name="longitud" render={({ field }) => <input type="hidden" {...field} value={field.value ?? ""}/>} />
 
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

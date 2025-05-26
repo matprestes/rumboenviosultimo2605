@@ -4,7 +4,7 @@
 import type * as React from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { ClienteSchema, type ClienteFormValues, EstadoEnum } from '@/lib/schemas';
+import { ClienteSchema, type Cliente, type ClienteFormValues, EstadoEnum } from '@/lib/schemas';
 import { Button } from '@/components/ui/button';
 import {
   Form,
@@ -34,8 +34,8 @@ interface EmpresaOption {
 }
 
 interface ClienteFormProps {
-  onSubmit: (data: ClienteFormValues & { latitud?: number | null; longitud?: number | null }) => Promise<void>;
-  defaultValues?: Partial<ClienteFormValues & { latitud?: number | null; longitud?: number | null }>;
+  onSubmit: (data: Cliente) => Promise<void>; // Changed to accept full Cliente
+  defaultValues?: Partial<Cliente>; // Use full Cliente
   empresas?: EmpresaOption[];
   isSubmitting?: boolean;
   submitButtonText?: string;
@@ -50,17 +50,31 @@ export function ClienteForm({
 }: ClienteFormProps) {
   const { toast } = useToast();
   const [isGeocoding, setIsGeocoding] = React.useState(false);
-  const [geocodedData, setGeocodedData] = React.useState<GeocodeResult | null>(null);
+  const [geocodedData, setGeocodedData] = React.useState<GeocodeResult | null>(
+    defaultValues?.latitud && defaultValues?.longitud && defaultValues?.direccion ? { lat: defaultValues.latitud, lng: defaultValues.longitud, formattedAddress: defaultValues.direccion } : null
+  );
 
-  const form = useForm<ClienteFormValues & { latitud?: number | null; longitud?: number | null }>({
-    resolver: zodResolver(ClienteSchema.omit({ id: true, created_at: true, updated_at: true, latitud: true, longitud: true})),
+  const form = useForm<Cliente>({ // Use full Cliente for form type
+    resolver: zodResolver(ClienteSchema.omit({ created_at: true, updated_at: true })),
     defaultValues: {
       estado: "activo",
-      latitud: null,
-      longitud: null,
       ...defaultValues,
     },
   });
+
+  React.useEffect(() => {
+    if (defaultValues) {
+      form.reset({
+        estado: "activo",
+        ...defaultValues,
+      });
+      if (defaultValues.latitud && defaultValues.longitud && defaultValues.direccion) {
+        setGeocodedData({ lat: defaultValues.latitud, lng: defaultValues.longitud, formattedAddress: defaultValues.direccion });
+      } else {
+        setGeocodedData(null);
+      }
+    }
+  }, [defaultValues, form]);
 
   const handleGeocode = async () => {
     const addressValue = form.getValues("direccion");
@@ -82,7 +96,7 @@ export function ClienteForm({
         setGeocodedData(result);
         toast({
           title: "Geocodificación Exitosa",
-          description: `Dirección encontrada: ${result.formattedAddress}`,
+          description: `Dirección verificada: ${result.formattedAddress}`,
           variant: "default",
         });
       } else {
@@ -108,11 +122,13 @@ export function ClienteForm({
     }
   };
 
-  const handleFormSubmit = async (data: ClienteFormValues & { latitud?: number | null; longitud?: number | null }) => {
-    const dataToSubmit = {
+  const handleFormSubmit = async (data: Cliente) => {
+    const dataToSubmit: Cliente = {
       ...data,
+      id: defaultValues?.id || data.id,
       latitud: form.getValues("latitud"),
       longitud: form.getValues("longitud"),
+      empresa_id: data.empresa_id === 'no_empresa' ? null : data.empresa_id,
     };
     await onSubmit(dataToSubmit);
   };
@@ -164,12 +180,12 @@ export function ClienteForm({
                    <span className="ml-2 hidden sm:inline">Verificar</span>
                 </Button>
               </div>
-              {geocodedData && (
+              {geocodedData?.formattedAddress && (
                 <FormDescription className="mt-1 text-green-600 flex items-center gap-1">
                  <CheckCircle size={16} /> Dirección verificada: {geocodedData.formattedAddress}
                 </FormDescription>
               )}
-               {!isGeocoding && form.formState.dirtyFields.direccion && !geocodedData && (
+               {!isGeocoding && form.formState.dirtyFields.direccion && !geocodedData?.formattedAddress && (
                  <FormDescription className="mt-1 text-orange-600 flex items-center gap-1">
                   <AlertTriangle size={16}/> Verifique la dirección para obtener coordenadas.
                 </FormDescription>
@@ -178,8 +194,8 @@ export function ClienteForm({
             </FormItem>
           )}
         />
-        <Controller control={form.control} name="latitud" render={({ field }) => <input type="hidden" {...field} />} />
-        <Controller control={form.control} name="longitud" render={({ field }) => <input type="hidden" {...field} />} />
+        <Controller control={form.control} name="latitud" render={({ field }) => <input type="hidden" {...field} value={field.value ?? ""} />} />
+        <Controller control={form.control} name="longitud" render={({ field }) => <input type="hidden" {...field} value={field.value ?? ""} />} />
 
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -217,7 +233,7 @@ export function ClienteForm({
           render={({ field }) => (
             <FormItem>
               <FormLabel>Empresa Asociada (Opcional)</FormLabel>
-              <Select onValueChange={field.onChange} defaultValue={field.value ?? undefined}>
+              <Select onValueChange={field.onChange} value={field.value === null ? 'no_empresa' : field.value || 'no_empresa'}>
                 <FormControl>
                   <SelectTrigger>
                     <SelectValue placeholder="Seleccione una empresa" />
@@ -226,7 +242,7 @@ export function ClienteForm({
                 <SelectContent>
                   <SelectItem value="no_empresa">Ninguna</SelectItem>
                   {empresas.map((empresa) => (
-                    <SelectItem key={empresa.id} value={empresa.id}>
+                    <SelectItem key={empresa.id} value={empresa.id!}>
                       {empresa.nombre}
                     </SelectItem>
                   ))}
