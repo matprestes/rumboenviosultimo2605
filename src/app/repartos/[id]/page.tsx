@@ -1,0 +1,274 @@
+
+"use client";
+
+import * as React from 'react';
+import Link from 'next/link';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ArrowLeft, Edit, Loader2, Package, Truck, User, MapPin, ClipboardEdit, CheckCircle, XCircle, Play, PowerOff, RefreshCw } from "lucide-react";
+import { getRepartoByIdAction, updateRepartoEstadoAction, updateParadaEstadoAction, reorderParadasAction } from '@/actions/reparto-actions';
+import type { RepartoConDetalles, ParadaReparto, EstadoReparto, EstadoEnvio, EnvioConDetalles } from '@/lib/schemas';
+import { EstadoRepartoEnum, EstadoEnvioEnum } from '@/lib/schemas';
+import { useToast } from '@/hooks/use-toast';
+import { useRouter } from 'next/navigation';
+import { Badge } from '@/components/ui/badge';
+import { format, parseISO } from 'date-fns';
+import { es } from 'date-fns/locale';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Input } from '@/components/ui/input';
+
+interface RepartoDetallePageProps {
+  params: { id: string };
+}
+
+export default function RepartoDetallePage({ params }: RepartoDetallePageProps) {
+  const { toast } = useToast();
+  const router = useRouter();
+  const repartoId = params.id;
+
+  const [reparto, setReparto] = React.useState<(RepartoConDetalles & { paradas: ParadaConDetalles[] }) | null>(null);
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [isUpdating, setIsUpdating] = React.useState(false);
+  const [paradasEdit, setParadasEdit] = React.useState<ParadaConDetalles[]>([]);
+
+  const fetchRepartoDetails = React.useCallback(async () => {
+    setIsLoading(true);
+    const { reparto: data, error } = await getRepartoByIdAction(repartoId);
+    if (error || !data) {
+      toast({ title: "Error al Cargar Reparto", description: error || "Reparto no encontrado.", variant: "destructive" });
+      router.push('/repartos');
+      return;
+    }
+    setReparto(data);
+    setParadasEdit(data.paradas ? [...data.paradas].sort((a, b) => (a.orden_visita || 999) - (b.orden_visita || 999)) : []);
+    setIsLoading(false);
+  }, [repartoId, toast, router]);
+
+  React.useEffect(() => {
+    fetchRepartoDetails();
+  }, [fetchRepartoDetails]);
+  
+  const handleRepartoEstadoChange = async (nuevoEstado: EstadoReparto) => {
+    setIsUpdating(true);
+    const result = await updateRepartoEstadoAction(repartoId, nuevoEstado);
+    if (result.success) {
+      toast({ title: "Estado del Reparto Actualizado", description: `El reparto ahora está ${nuevoEstado}.` });
+      fetchRepartoDetails(); // Refresh data
+    } else {
+      toast({ title: "Error al Actualizar Estado", description: result.error, variant: "destructive" });
+    }
+    setIsUpdating(false);
+  };
+
+  const handleParadaEstadoChange = async (paradaId: string, nuevoEstado: EstadoEnvio, envioId: string) => {
+    setIsUpdating(true);
+    const result = await updateParadaEstadoAction(paradaId, nuevoEstado, envioId);
+    if (result.success) {
+      toast({ title: "Estado de Parada Actualizado", description: `La parada ahora está ${nuevoEstado}.` });
+      fetchRepartoDetails(); // Refresh data
+    } else {
+      toast({ title: "Error al Actualizar Parada", description: result.error, variant: "destructive" });
+    }
+    setIsUpdating(false);
+  };
+  
+  const handleOrdenChange = (paradaId: string, nuevoOrden: string) => {
+    const ordenNum = parseInt(nuevoOrden, 10);
+    setParadasEdit(prev => 
+      prev.map(p => p.id === paradaId ? { ...p, orden_visita: isNaN(ordenNum) ? null : ordenNum } : p)
+    );
+  };
+
+  const handleSaveOrden = async () => {
+    if (!reparto) return;
+    setIsUpdating(true);
+    const orderedParadaIds = paradasEdit
+      .slice() // Create a copy before sorting
+      .sort((a, b) => (a.orden_visita || 999) - (b.orden_visita || 999))
+      .map(p => p.id!);
+    
+    const result = await reorderParadasAction(repartoId, orderedParadaIds);
+    if (result.success) {
+      toast({ title: "Orden de Paradas Actualizado", description: "El orden de las paradas ha sido guardado." });
+      fetchRepartoDetails();
+    } else {
+      toast({ title: "Error al Guardar Orden", description: result.error, variant: "destructive" });
+    }
+    setIsUpdating(false);
+  };
+
+  if (isLoading) {
+    return <div className="flex justify-center items-center h-screen"><Loader2 className="h-16 w-16 animate-spin text-primary" /></div>;
+  }
+
+  if (!reparto) {
+    return <p className="text-center text-destructive">Reparto no encontrado.</p>;
+  }
+
+  const getEstadoDisplayName = (estadoValue?: EstadoReparto | EstadoEnvio | null) => {
+    if (!estadoValue) return 'N/A';
+    return estadoValue.split('_').map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' ');
+  }
+  
+  const getEstadoBadgeVariant = (estado: EstadoReparto | EstadoEnvio | null | undefined) => {
+    switch (estado) {
+      case 'entregado':
+      case 'completado':
+        return 'bg-green-500 hover:bg-green-600';
+      case 'planificado':
+      case 'pendiente_asignacion':
+        return 'bg-yellow-500 hover:bg-yellow-600';
+      case 'asignado':
+      case 'en_curso':
+        return 'bg-blue-500 hover:bg-blue-600';
+      case 'no_entregado':
+      case 'cancelado':
+        return 'bg-red-500 hover:bg-red-600 text-white';
+      default:
+        return 'bg-gray-500 hover:bg-gray-600';
+    }
+  };
+
+  const paradas = paradasEdit;
+  const resumen = {
+    total: paradas.length,
+    pendientes: paradas.filter(p => p.estado_parada === 'asignado' || p.estado_parada === 'pendiente_asignacion').length,
+    entregadas: paradas.filter(p => p.estado_parada === 'entregado').length,
+    noEntregadas: paradas.filter(p => p.estado_parada === 'no_entregado').length,
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="icon" asChild><Link href="/repartos"><ArrowLeft /></Link></Button>
+          <h1 className="text-3xl font-bold tracking-tight text-primary flex items-center gap-2">
+            <ClipboardEdit size={32} /> Detalle del Reparto
+          </h1>
+        </div>
+         <Button onClick={fetchRepartoDetails} variant="outline" size="sm" disabled={isUpdating || isLoading}>
+            <RefreshCw className={`mr-2 h-4 w-4 ${isLoading || isUpdating ? 'animate-spin' : ''}`} /> Refrescar
+        </Button>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <div className="flex justify-between items-start">
+            <div>
+              <CardTitle>ID Reparto: {reparto.id?.substring(0, 8)}...</CardTitle>
+              <CardDescription>
+                Fecha: {reparto.fecha_reparto ? format(new Date(reparto.fecha_reparto), "PPP", { locale: es }) : 'N/A'}
+              </CardDescription>
+            </div>
+            <Badge variant="default" className={cn("text-sm", getEstadoBadgeVariant(reparto.estado))}>
+              {getEstadoDisplayName(reparto.estado)}
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <p><strong className="flex items-center gap-1"><Truck size={16}/>Repartidor:</strong> {reparto.repartidores?.nombre || 'N/A'}</p>
+            <p><strong className="flex items-center gap-1"><Building size={16}/>Empresa:</strong> {reparto.empresas?.nombre || 'Individual'}</p>
+          </div>
+          {reparto.notas && <p><strong>Notas:</strong> {reparto.notas}</p>}
+          <div className="flex gap-2">
+            {reparto.estado === 'planificado' && 
+              <Button onClick={() => handleRepartoEstadoChange('en_curso')} disabled={isUpdating} className="bg-blue-500 hover:bg-blue-600">
+                {isUpdating ? <Loader2 className="animate-spin"/> : <Play size={16}/>} Iniciar Reparto
+              </Button>}
+            {reparto.estado === 'en_curso' && 
+              <Button onClick={() => handleRepartoEstadoChange('completado')} disabled={isUpdating} className="bg-green-500 hover:bg-green-600">
+                 {isUpdating ? <Loader2 className="animate-spin"/> : <CheckCircle size={16}/>} Finalizar Reparto
+              </Button>}
+            {(reparto.estado === 'planificado' || reparto.estado === 'en_curso') &&
+              <Button onClick={() => handleRepartoEstadoChange('cancelado')} variant="destructive" disabled={isUpdating}>
+                {isUpdating ? <Loader2 className="animate-spin"/> : <XCircle size={16}/>} Cancelar Reparto
+              </Button>}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex justify-between items-center">
+            <CardTitle>Paradas del Reparto ({resumen.total})</CardTitle>
+            <Button onClick={handleSaveOrden} disabled={isUpdating || reparto.estado === 'completado' || reparto.estado === 'cancelado'} size="sm">
+              {isUpdating ? <Loader2 className="animate-spin"/> : <ClipboardEdit size={16}/>} Guardar Orden
+            </Button>
+          </div>
+          <CardDescription>Gestiona el orden y estado de cada parada.</CardDescription>
+          <div className="mt-2 text-sm grid grid-cols-2 md:grid-cols-4 gap-2">
+            <span><strong>Entregadas:</strong> {resumen.entregadas}</span>
+            <span><strong>Pendientes:</strong> {resumen.pendientes}</span>
+            <span><strong>No Entregadas:</strong> {resumen.noEntregadas}</span>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {paradas.length === 0 ? (
+            <p className="text-muted-foreground">Este reparto no tiene paradas asignadas.</p>
+          ) : (
+            <ScrollArea className="max-h-[600px]">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[80px]">Orden</TableHead>
+                  <TableHead>Destino (Envío ID)</TableHead>
+                  <TableHead>Cliente</TableHead>
+                  <TableHead>Paquete</TableHead>
+                  <TableHead className="w-[200px]">Estado Parada</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {paradas.map((parada) => (
+                  <TableRow key={parada.id}>
+                    <TableCell>
+                      <Input 
+                        type="number"
+                        value={parada.orden_visita ?? ""}
+                        onChange={(e) => handleOrdenChange(parada.id!, e.target.value)}
+                        className="w-16 h-8 text-center"
+                        disabled={isUpdating || reparto.estado === 'completado' || reparto.estado === 'cancelado'}
+                      />
+                    </TableCell>
+                    <TableCell>
+                        <div className="flex items-center gap-1">
+                           <MapPin size={14} className="text-muted-foreground"/> {(parada.envios as EnvioConDetalles)?.direccion_destino}
+                        </div>
+                        <div className="text-xs text-muted-foreground">ID: {parada.envio_id.substring(0,8)}...</div>
+                    </TableCell>
+                    <TableCell>
+                        {(parada.envios as EnvioConDetalles)?.clientes?.nombre ? 
+                         `${(parada.envios as EnvioConDetalles)?.clientes?.apellido}, ${(parada.envios as EnvioConDetalles)?.clientes?.nombre}` :
+                         (parada.envios as EnvioConDetalles)?.cliente_temporal_nombre || 'N/A'
+                        }
+                    </TableCell>
+                     <TableCell>{(parada.envios as EnvioConDetalles)?.tipos_paquete?.nombre || 'N/A'}</TableCell>
+                    <TableCell>
+                      <Select
+                        value={parada.estado_parada || undefined}
+                        onValueChange={(value) => handleParadaEstadoChange(parada.id!, value as EstadoEnvio, parada.envio_id)}
+                        disabled={isUpdating || reparto.estado === 'completado' || reparto.estado === 'cancelado'}
+                      >
+                        <SelectTrigger className={cn("h-9", getEstadoBadgeVariant(parada.estado_parada))}>
+                           <SelectValue placeholder="Estado..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {EstadoEnvioEnum.options.filter(e => e !== 'pendiente_asignacion').map(estado => ( // Filter out 'pendiente_asignacion'
+                            <SelectItem key={estado} value={estado}>{getEstadoDisplayName(estado)}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            </ScrollArea>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

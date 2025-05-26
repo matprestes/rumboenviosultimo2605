@@ -18,7 +18,7 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
-import { Home, Building2, Users, Truck, Package, ClipboardList, MapIcon, Settings, ShipWheel, Route } from 'lucide-react'; // ShipWheel as logo, Route for Mapa Envios
+import { Home, Building2, Users, Truck, Package, ClipboardList, MapIcon, Settings, ShipWheel, Route, ClipboardPlus } from 'lucide-react'; // Added ClipboardPlus for Repartos
 import { Separator } from './ui/separator';
 
 const navItems = [
@@ -27,8 +27,8 @@ const navItems = [
   { href: '/clientes', label: 'Clientes', icon: Users },
   { href: '/repartidores', label: 'Repartidores', icon: Truck },
   { href: '/envios', label: 'Envíos', icon: Package },
-  { href: '/repartos', label: 'Repartos', icon: ClipboardList },
-  { href: '/mapa-envios', label: 'Mapa de Envíos', icon: Route }, // Changed icon and href
+  { href: '/repartos', label: 'Repartos', icon: ClipboardPlus }, // Changed icon
+  { href: '/mapa-envios', label: 'Mapa de Envíos', icon: Route },
   { type: 'separator' },
   { href: '/configuracion', label: 'Configuración', icon: Settings },
 ];
@@ -49,7 +49,7 @@ function MainNavigation() {
             <SidebarMenuButton
               asChild
               isActive={pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href))}
-              tooltip={open ? undefined : item.label} // Show tooltip only when collapsed
+              tooltip={open ? undefined : item.label} 
             >
               <Link href={item.href}>
                 <Icon />
@@ -85,7 +85,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </Sidebar>
       <SidebarInset>
         <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-background/80 backdrop-blur-sm px-4 sm:px-6">
-          <div className="md:hidden"> {/* Only show trigger on mobile/tablet, Sidebar component handles its own trigger visibility */}
+          <div className="md:hidden"> 
              <SidebarTrigger />
           </div>
           <div className="flex-1">
@@ -95,7 +95,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             {/* Theme toggle, User avatar etc. */}
           </div>
         </header>
-        <main className="flex-1 p-4 md:p-6 lg:p-8 h-[calc(100vh-3.5rem)] overflow-auto"> {/* Ensure main content area can scroll if needed */}
+        <main className="flex-1 p-4 md:p-6 lg:p-8 h-[calc(100vh-3.5rem)] overflow-auto"> 
           {children}
         </main>
       </SidebarInset>

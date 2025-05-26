@@ -1,39 +1,260 @@
 
+"use client";
+
+import * as React from 'react';
+import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ClipboardList } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ClipboardList, PlusCircle, Loader2, Eye, Trash2, CalendarIcon, Filter, TruckIcon } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle
+} from "@/components/ui/alert-dialog";
+import { getRepartosAction, deleteRepartoAction, getRepartidoresForSelectAction } from '@/actions/reparto-actions';
+import type { RepartoConDetalles, EstadoReparto, Repartidor } from '@/lib/schemas';
+import { EstadoRepartoEnum } from '@/lib/schemas';
+import { useToast } from '@/hooks/use-toast';
+import { Badge } from '@/components/ui/badge';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
+import { cn } from '@/lib/utils';
+
+const ITEMS_PER_PAGE = 10;
 
 export default function RepartosPage() {
+  const { toast } = useToast();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const [repartos, setRepartos] = React.useState<RepartoConDetalles[]>([]);
+  const [repartidores, setRepartidores] = React.useState<Pick<Repartidor, 'id' | 'nombre'>[]>([]);
+  const [totalRepartos, setTotalRepartos] = React.useState(0);
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [isDeleting, setIsDeleting] = React.useState(false);
+  const [repartoToDelete, setRepartoToDelete] = React.useState<RepartoConDetalles | null>(null);
+
+  const [repartidorFilter, setRepartidorFilter] = React.useState(searchParams.get('repartidor') || '');
+  const [fechaFilter, setFechaFilter] = React.useState<Date | undefined>(
+    searchParams.get('fecha') ? new Date(searchParams.get('fecha')!) : undefined
+  );
+  const [estadoFilter, setEstadoFilter] = React.useState<EstadoReparto | ''>(searchParams.get('estado') as EstadoReparto || '');
+  const currentPage = Number(searchParams.get('page')) || 1;
+
+  const fetchRepartidoresList = React.useCallback(async () => {
+    const data = await getRepartidoresForSelectAction();
+    setRepartidores(data);
+  }, []);
+  
+  React.useEffect(() => {
+    fetchRepartidoresList();
+  }, [fetchRepartidoresList]);
+
+  const fetchRepartos = React.useCallback(async (page: number) => {
+    setIsLoading(true);
+    const filters = {
+      repartidorId: repartidorFilter || undefined,
+      fecha: fechaFilter ? format(fechaFilter, 'yyyy-MM-dd') : undefined,
+      estado: estadoFilter || undefined,
+    };
+    const { repartos: data, count, error } = await getRepartosAction(filters, page, ITEMS_PER_PAGE);
+
+    if (error) {
+      toast({ title: "Error al Cargar Repartos", description: error, variant: "destructive" });
+      setRepartos([]);
+      setTotalRepartos(0);
+    } else {
+      setRepartos(data);
+      setTotalRepartos(count);
+    }
+    setIsLoading(false);
+  }, [toast, repartidorFilter, fechaFilter, estadoFilter]);
+  
+  React.useEffect(() => {
+    const params = new URLSearchParams();
+    if (repartidorFilter) params.set('repartidor', repartidorFilter);
+    if (fechaFilter) params.set('fecha', format(fechaFilter, 'yyyy-MM-dd'));
+    if (estadoFilter) params.set('estado', estadoFilter);
+    if (currentPage > 1) params.set('page', currentPage.toString());
+    
+    router.push(`${pathname}?${params.toString()}`, { scroll: false });
+    fetchRepartos(currentPage);
+  }, [repartidorFilter, fechaFilter, estadoFilter, currentPage, fetchRepartos, router, pathname]);
+
+
+  const handleApplyFilters = () => {
+    // Page will be reset by useEffect if currentPage becomes 1
+    // If currentPage is already 1, this just triggers fetch
+    if(currentPage !== 1) handlePageChange(1); 
+    else fetchRepartos(1);
+  };
+
+  const handlePageChange = (newPage: number) => {
+    const params = new URLSearchParams(searchParams);
+    params.set('page', newPage.toString());
+    router.push(`${pathname}?${params.toString()}`, { scroll: false });
+  };
+  
+  const handleDeleteConfirm = async () => {
+    if (!repartoToDelete || !repartoToDelete.id) return;
+    setIsDeleting(true);
+    const { success, error } = await deleteRepartoAction(repartoToDelete.id);
+    if (success) {
+      toast({ title: "Reparto Eliminado", description: `El reparto ID ${repartoToDelete.id.substring(0,8)}... ha sido eliminado.` });
+      fetchRepartos(currentPage); 
+    } else {
+      toast({ title: "Error al Eliminar", description: error, variant: "destructive" });
+    }
+    setRepartoToDelete(null);
+    setIsDeleting(false);
+  };
+
+  const totalPages = Math.ceil(totalRepartos / ITEMS_PER_PAGE);
+
+  const getEstadoRepartoDisplayName = (estadoValue?: EstadoReparto | null) => {
+    if (!estadoValue) return 'N/A';
+    return estadoValue.split('_').map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' ');
+  }
+
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-3xl font-bold tracking-tight text-primary flex items-center gap-2">
-          <ClipboardList size={32} />
-          Gestión de Repartos
-        </h1>
-        <p className="text-muted-foreground mt-1">
-          Asigna envíos a repartidores y gestiona las hojas de ruta.
-        </p>
+      <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-primary flex items-center gap-2">
+            <ClipboardList size={32} />
+            Gestión de Repartos
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            Asigna envíos a repartidores y gestiona las hojas de ruta.
+          </p>
+        </div>
+        <Button asChild>
+          <Link href="/repartos/nuevo">
+            <PlusCircle className="mr-2 h-4 w-4" />
+            Nuevo Reparto
+          </Link>
+        </Button>
       </header>
-      
-      <Card>
+
+       <Card>
         <CardHeader>
-          <CardTitle>Listado de Repartos</CardTitle>
-          <CardDescription>
-            Aquí podrás ver, crear, editar y eliminar repartos.
-          </CardDescription>
+          <CardTitle className="flex items-center gap-2"><Filter size={20}/> Filtros de Repartos</CardTitle>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mt-4 items-end">
+            <Select value={repartidorFilter} onValueChange={setRepartidorFilter}>
+              <SelectTrigger><div className="flex items-center gap-1"><TruckIcon size={16}/> <SelectValue placeholder="Repartidor..." /></div></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">Todos</SelectItem>
+                {repartidores.map(r => <SelectItem key={r.id} value={r.id!}>{r.nombre}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" className={cn("w-full justify-start text-left font-normal", !fechaFilter && "text-muted-foreground")}>
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {fechaFilter ? format(fechaFilter, "PPP", { locale: es }) : <span>Fecha Reparto</span>}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={fechaFilter} onSelect={setFechaFilter} initialFocus locale={es}/></PopoverContent>
+            </Popover>
+            <Select value={estadoFilter} onValueChange={(value) => setEstadoFilter(value as EstadoReparto | '')}>
+              <SelectTrigger><SelectValue placeholder="Estado..." /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">Todos</SelectItem>
+                {EstadoRepartoEnum.options.map(e => <SelectItem key={e} value={e}>{getEstadoRepartoDisplayName(e)}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Button onClick={handleApplyFilters} className="w-full">Aplicar Filtros</Button>
+          </div>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col items-center justify-center h-64 border-2 border-dashed border-border rounded-lg bg-muted/20">
-            <ClipboardList className="w-16 h-16 text-muted-foreground mb-4" />
-            <p className="text-muted-foreground">
-              La funcionalidad de gestión de repartos se implementará aquí.
-            </p>
-            <p className="text-sm text-muted-foreground">
-              (Asignación de envíos a repartidores, fechas, individuales o por empresa)
-            </p>
-          </div>
+          {isLoading ? (
+            <div className="flex justify-center items-center h-64"><Loader2 className="h-16 w-16 animate-spin text-primary" /></div>
+          ) : repartos.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-64 border-2 border-dashed border-border rounded-lg bg-muted/20">
+              <ClipboardList className="w-16 h-16 text-muted-foreground mb-4" />
+              <p className="text-muted-foreground">No se encontraron repartos con los filtros actuales.</p>
+            </div>
+          ) : (
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>ID Reparto</TableHead>
+                    <TableHead>Fecha</TableHead>
+                    <TableHead>Repartidor</TableHead>
+                    <TableHead>Empresa</TableHead>
+                    <TableHead>Paradas</TableHead>
+                    <TableHead>Estado</TableHead>
+                    <TableHead className="text-right">Acciones</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {repartos.map((reparto) => (
+                    <TableRow key={reparto.id}>
+                      <TableCell className="font-mono text-xs">{reparto.id?.substring(0, 8)}...</TableCell>
+                      <TableCell>{reparto.fecha_reparto ? format(new Date(reparto.fecha_reparto), "dd/MM/yyyy", { locale: es }) : '-'}</TableCell>
+                      <TableCell>{reparto.repartidores?.nombre || 'N/A'}</TableCell>
+                      <TableCell>{reparto.empresas?.nombre || 'Individual'}</TableCell>
+                      <TableCell>{reparto.paradas_count}</TableCell>
+                      <TableCell>
+                        <Badge variant={reparto.estado === 'completado' ? 'default' : (reparto.estado === 'cancelado' ? 'destructive' : 'secondary')}
+                               className={
+                                 reparto.estado === 'completado' ? 'bg-green-500 hover:bg-green-600' : 
+                                 reparto.estado === 'planificado' ? 'bg-yellow-500 hover:bg-yellow-600' :
+                                 reparto.estado === 'en_curso' ? 'bg-blue-500 hover:bg-blue-600' :
+                                 'bg-gray-500 hover:bg-gray-600'
+                               }
+                        >
+                          {getEstadoRepartoDisplayName(reparto.estado)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="ghost" size="icon" asChild title="Ver Detalle">
+                          <Link href={`/repartos/${reparto.id}`}><Eye className="h-4 w-4" /></Link>
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => setRepartoToDelete(reparto)} title="Eliminar">
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              {totalPages > 1 && (
+                <div className="flex justify-center items-center space-x-2 mt-6">
+                  <Button onClick={() => handlePageChange(currentPage - 1)} disabled={currentPage === 1 || isLoading}>Anterior</Button>
+                  <span className="text-sm text-muted-foreground">Página {currentPage} de {totalPages}</span>
+                  <Button onClick={() => handlePageChange(currentPage + 1)} disabled={currentPage === totalPages || isLoading}>Siguiente</Button>
+                </div>
+              )}
+            </>
+          )}
         </CardContent>
       </Card>
+
+      <AlertDialog open={!!repartoToDelete} onOpenChange={(isOpen) => !isOpen && setRepartoToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Está seguro de eliminar este reparto?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción no se puede deshacer. Se eliminará el reparto y sus paradas. Los envíos asociados volverán al estado 'pendiente_asignacion'.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteConfirm} disabled={isDeleting} className="bg-destructive hover:bg-destructive/90">
+              {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
