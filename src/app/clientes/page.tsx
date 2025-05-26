@@ -2,7 +2,7 @@
 "use client";
 
 import * as React from 'react';
-import Link from 'next/link'; // Added Link import
+import Link from 'next/link'; 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,27 +17,23 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Users, PlusCircle, Loader2, Edit, Trash2, MapPinIcon } from "lucide-react";
-// Removed ClienteForm import as it's no longer used in a dialog here
 import type { Cliente, Empresa as EmpresaType } from '@/lib/schemas';
 import { supabase } from '@/lib/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
-import { useRouter } from 'next/navigation'; // Added for navigation
+import { useRouter } from 'next/navigation'; 
 
-interface EmpresaOption { // This can be simplified if not used elsewhere
+interface EmpresaOption { 
   id: string;
   nombre: string;
 }
 
 export default function ClientesPage() {
   const { toast } = useToast();
-  const router = useRouter(); // For navigation
+  const router = useRouter(); 
   const [clientes, setClientes] = React.useState<Cliente[]>([]);
-  // Removed empresas state as it's fetched on the /clientes/nuevo page
   const [isLoading, setIsLoading] = React.useState(true);
-  // Removed isLoadingEmpresas
-  // Removed isDialogOpen and editingCliente states
-  const [isDeleting, setIsDeleting] = React.useState(false); // Renamed from isSubmitting for clarity
+  const [isDeleting, setIsDeleting] = React.useState(false); 
   const [clienteToDelete, setClienteToDelete] = React.useState<Cliente | null>(null);
 
 
@@ -45,13 +41,9 @@ export default function ClientesPage() {
     setIsLoading(true);
     const { data, error } = await supabase
       .from('clientes')
-      .select(\`
-        *,
-        empresas (
-          id,
-          nombre
-        )
-      \`)
+      .select(
+        '*, empresas (id, nombre)'
+      )
       .order('apellido', { ascending: true })
       .order('nombre', { ascending: true });
 
@@ -71,17 +63,13 @@ export default function ClientesPage() {
 
   React.useEffect(() => {
     fetchClientes();
-    // Removed fetchEmpresas call
   }, [fetchClientes]);
 
-  // Removed handleFormSubmit as creation/editing is on separate pages
-
   const handleEdit = (cliente: Cliente) => {
-    // router.push(`/clientes/${cliente.id}/editar`); // Future edit page
+    // Placeholder for future navigation to an edit page
+    // router.push(`/clientes/${cliente.id}/editar`);
     toast({ title: "Info", description: `La edición de "${cliente.nombre} ${cliente.apellido}" se implementará en una página dedicada.`});
   };
-
-  // Removed openNewClienteDialog
 
   const handleDeleteConfirm = async () => {
     if (!clienteToDelete || !clienteToDelete.id) return;
@@ -131,8 +119,6 @@ export default function ClientesPage() {
         </Button>
       </header>
       
-      {/* Dialog for creation/editing removed */}
-
       <AlertDialog open={!!clienteToDelete} onOpenChange={(isOpen) => !isOpen && setClienteToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -142,16 +128,16 @@ export default function ClientesPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteConfirm} disabled={isDeleting} className="bg-destructive hover:bg-destructive/90">
+            <AlertDialogCancel disabled={isDeleting} onClick={() => setClienteToDelete(null)}>Cancelar</AlertDialogCancel>
+            <Button onClick={handleDeleteConfirm} disabled={isDeleting} variant="destructive">
               {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Eliminar
-            </AlertDialogAction>
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
       
-      <Card className="rounded-2xl">
+      <Card className="rounded-2xl shadow-sm">
         <CardHeader>
           <CardTitle>Listado de Clientes</CardTitle>
           <CardDescription>
@@ -184,7 +170,6 @@ export default function ClientesPage() {
               </TableHeader>
               <TableBody>
                 {clientes.map((cliente) => {
-                  // Type assertion for empresaAsociada to help TypeScript
                   const empresaAsociada = cliente.empresas as unknown as EmpresaOption | null;
                   return (
                     <TableRow key={cliente.id}>
@@ -221,4 +206,3 @@ export default function ClientesPage() {
     </div>
   );
 }
-
