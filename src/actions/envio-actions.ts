@@ -32,13 +32,14 @@ async function serverSideGeocodeAddress(address: string): Promise<{ lat: number;
 export async function createEnvioAction(
     formData: Envio | DosRuedasEnvioFormValues
 ): Promise<{ success: boolean; data?: Envio; error?: string }> {
-    
+
     const currentUserId = await getUserId();
     let dataToInsert: Partial<Envio> = {};
 
     if ('remitente_cliente_id' in formData && formData.remitente_cliente_id) {
+        // This is from DosRuedasEnvioForm
         const dosRuedasData = formData as DosRuedasEnvioFormValues;
-        
+
         const { data: remitenteData, error: remitenteError } = await supabase
             .from('clientes')
             .select('nombre, apellido, telefono, direccion, latitud, longitud')
@@ -51,12 +52,10 @@ export async function createEnvioAction(
         if (!remitenteData.latitud || !remitenteData.longitud) {
             return { success: false, error: "El remitente \"" + remitenteData.nombre + " " + remitenteData.apellido + "\" no tiene coordenadas geocodificadas. Actualice los datos del cliente." };
         }
-        
-        // For DosRuedas, tipo_servicio_id is now part of the form
+
         if (!dosRuedasData.tipo_servicio_id) {
             return { success: false, error: "Debe seleccionar un tipo de servicio." };
         }
-
 
         dataToInsert = {
             remitente_cliente_id: dosRuedasData.remitente_cliente_id,
@@ -66,57 +65,93 @@ export async function createEnvioAction(
             nombre_destinatario: dosRuedasData.nombre_destinatario,
             telefono_destinatario: dosRuedasData.telefono_destinatario,
             direccion_destino: dosRuedasData.direccion_destino,
+            latitud_destino: dosRuedasData.latitud_destino ?? null, // Use from form if available
+            longitud_destino: dosRuedasData.longitud_destino ?? null, // Use from form if available
             tipo_servicio_id: dosRuedasData.tipo_servicio_id,
             horario_retiro_desde: dosRuedasData.horario_retiro_desde || null,
             horario_entrega_hasta: dosRuedasData.horario_entrega_hasta || null,
-            precio: dosRuedasData.precio, // This price is now 0/placeholder from form
+            precio: dosRuedasData.precio,
             detalles_adicionales: dosRuedasData.detalles_adicionales || null,
             estado: 'pendiente_asignacion',
             user_id: currentUserId,
-            latitud_destino: null, // Placeholder, client should fill via its geocoding
-            longitud_destino: null, // Placeholder
+            // Fields not present in DosRuedas form will be null or default by DB
+            cliente_temporal_nombre: null,
+            cliente_temporal_telefono: null,
+            empresa_origen_id: null,
+            notas_origen: null,
+            empresa_destino_id: null,
+            notas_destino: null,
+            peso_kg: null,
+            fecha_estimada_entrega: null,
+            repartidor_asignado_id: null,
+            notas_conductor: null,
         };
-        
-        if (dosRuedasData.direccion_destino && (!dataToInsert.latitud_destino || !dataToInsert.longitud_destino)) {
+
+        // Fallback to server-side geocoding only if client-side coordinates are explicitly missing AND address is present
+        if (dosRuedasData.direccion_destino && (dataToInsert.latitud_destino === null || dataToInsert.longitud_destino === null)) {
+            console.warn("Client-side destination coordinates missing for DosRuedas, attempting server-side geocoding for: " + dosRuedasData.direccion_destino);
             const geocodedDestination = await serverSideGeocodeAddress(dosRuedasData.direccion_destino);
             if (geocodedDestination) {
                dataToInsert.latitud_destino = geocodedDestination.lat;
                dataToInsert.longitud_destino = geocodedDestination.lng;
-               dataToInsert.direccion_destino = geocodedDestination.formattedAddress;
             } else {
-                console.warn("Server-side geocoding failed for destination in createEnvioAction (DosRuedas): " + dosRuedasData.direccion_destino);
+                console.warn("Server-side geocoding fallback failed for destination in createEnvioAction (DosRuedas): " + dosRuedasData.direccion_destino);
+                // Optionally, you could return an error here if geocoding is strictly required
+                // return { success: false, error: "No se pudieron obtener las coordenadas para la dirección de destino." };
             }
         }
 
-        const { data: defaultPaquete, error: paqueteError } = await supabase.from('tipos_paquete').select('id').limit(1).single();
+        // Assign a default tipo_paquete_id if not provided by form (DosRuedas form doesn't have it)
+        const { data: defaultPaquete, error: paqueteError } = await supabase.from('tipos_paquete').select('id').order('created_at').limit(1).single();
         if (paqueteError || !defaultPaquete) {
-            // Don't fail if no default package, make it nullable or handle gracefully
-             dataToInsert.tipo_paquete_id = null; // Or a specific known ID for 'default/undefined'
+             dataToInsert.tipo_paquete_id = null;
              console.warn("No se pudo encontrar un tipo de paquete por defecto para envío DosRuedas. Asignando NULL.");
         } else {
             dataToInsert.tipo_paquete_id = defaultPaquete.id;
         }
 
-
     } else { // Handle full Envio form (internal)
         const fullEnvioData = formData as Envio;
-        const validatedFields = EnvioSchema.safeParse(fullEnvioData);
+        // Ensure all optional fields that might be empty strings are converted to null if schema expects nullable
+        const dataForValidation = {
+            ...fullEnvioData,
+            remitente_cliente_id: fullEnvioData.remitente_cliente_id || null,
+            cliente_temporal_nombre: fullEnvioData.cliente_temporal_nombre || null,
+            cliente_temporal_telefono: fullEnvioData.cliente_temporal_telefono || null,
+            empresa_origen_id: fullEnvioData.empresa_origen_id || null,
+            notas_origen: fullEnvioData.notas_origen || null,
+            empresa_destino_id: fullEnvioData.empresa_destino_id || null,
+            notas_destino: fullEnvioData.notas_destino || null,
+            tipo_paquete_id: fullEnvioData.tipo_paquete_id || null,
+            peso_kg: fullEnvioData.peso_kg === 0 || fullEnvioData.peso_kg === undefined ? null : fullEnvioData.peso_kg,
+            tipo_servicio_id: fullEnvioData.tipo_servicio_id || null,
+            fecha_estimada_entrega: fullEnvioData.fecha_estimada_entrega ? new Date(fullEnvioData.fecha_estimada_entrega).toISOString().split('T')[0] : null,
+            horario_retiro_desde: fullEnvioData.horario_retiro_desde || null,
+            horario_entrega_hasta: fullEnvioData.horario_entrega_hasta || null,
+            repartidor_asignado_id: fullEnvioData.repartidor_asignado_id || null,
+            notas_conductor: fullEnvioData.notas_conductor || null,
+            detalles_adicionales: fullEnvioData.detalles_adicionales || null,
+        };
+
+        const validatedFields = EnvioSchema.safeParse(dataForValidation);
         if (!validatedFields.success) {
+            console.error("Validation Errors (createEnvioAction - Full Form):", validatedFields.error.flatten());
             return { success: false, error: validatedFields.error.flatten().fieldErrorsToString() };
         }
         let internalData = validatedFields.data;
 
         if (!internalData.latitud_origen || !internalData.longitud_origen) {
             console.warn("Envío creado sin coordenadas de origen para: " + internalData.direccion_origen + ". Asegúrese que el cliente geocodifique.");
+            // Optionally, attempt server-side geocoding here too if address_origen is present
         }
         if (!internalData.latitud_destino || !internalData.longitud_destino) {
            console.warn("Envío creado sin coordenadas de destino para: " + internalData.direccion_destino + ". Asegúrese que el cliente geocodifique.");
+           // Optionally, attempt server-side geocoding here too if address_destino is present
         }
 
         dataToInsert = {
             ...internalData,
             user_id: currentUserId,
-            fecha_estimada_entrega: internalData.fecha_estimada_entrega ? new Date(internalData.fecha_estimada_entrega).toISOString().split('T')[0] : null,
         };
     }
 
@@ -137,26 +172,42 @@ export async function createEnvioAction(
 }
 
 export async function updateEnvioAction(id: string, formData: Envio): Promise<{ success: boolean; data?: Envio; error?: string }> {
-  const validatedFields = EnvioSchema.safeParse(formData);
+   const dataForValidation = {
+    ...formData,
+    remitente_cliente_id: formData.remitente_cliente_id || null,
+    cliente_temporal_nombre: formData.cliente_temporal_nombre || null,
+    cliente_temporal_telefono: formData.cliente_temporal_telefono || null,
+    empresa_origen_id: formData.empresa_origen_id || null,
+    notas_origen: formData.notas_origen || null,
+    empresa_destino_id: formData.empresa_destino_id || null,
+    notas_destino: formData.notas_destino || null,
+    tipo_paquete_id: formData.tipo_paquete_id || null,
+    peso_kg: formData.peso_kg === 0 || formData.peso_kg === undefined ? null : formData.peso_kg,
+    tipo_servicio_id: formData.tipo_servicio_id || null,
+    fecha_estimada_entrega: formData.fecha_estimada_entrega ? new Date(formData.fecha_estimada_entrega).toISOString().split('T')[0] : null,
+    horario_retiro_desde: formData.horario_retiro_desde || null,
+    horario_entrega_hasta: formData.horario_entrega_hasta || null,
+    repartidor_asignado_id: formData.repartidor_asignado_id || null,
+    notas_conductor: formData.notas_conductor || null,
+    detalles_adicionales: formData.detalles_adicionales || null,
+  };
+  const validatedFields = EnvioSchema.safeParse(dataForValidation);
   if (!validatedFields.success) {
+    console.error("Validation Errors (updateEnvioAction):", validatedFields.error.flatten());
     return { success: false, error: validatedFields.error.flatten().fieldErrorsToString() };
   }
   let { data } = validatedFields;
 
-  if ((formData.direccion_origen !== data.direccion_origen || !data.latitud_origen || !data.longitud_origen) && data.direccion_origen) {
-    console.warn("Actualizando envío " + id + ". Dirección de origen cambiada o sin coordenadas: " + data.direccion_origen + ". Asegúrese que el cliente geocodifique.");
-  }
+  // If address changed and no new coords provided, warn (client should have geocoded)
+  // For simplicity, we are currently not re-geocoding on server for updates if coords are missing and address changed.
+  // This logic could be added similar to createEnvioAction if needed.
 
-  if ((formData.direccion_destino !== data.direccion_destino || !data.latitud_destino || !data.longitud_destino) && data.direccion_destino) {
-    console.warn("Actualizando envío " + id + ". Dirección de destino cambiada o sin coordenadas: " + data.direccion_destino + ". Asegúrese que el cliente geocodifique.");
-  }
-  
   const dataToUpdate = {
     ...data,
-    fecha_estimada_entrega: data.fecha_estimada_entrega ? new Date(data.fecha_estimada_entrega).toISOString().split('T')[0] : null,
     updated_at: new Date().toISOString(),
   };
 
+  // Remove fields that should not be in the update payload or are handled by DB
   const { id: envioId, created_at, user_id, ...updatePayload } = dataToUpdate;
 
 
@@ -172,7 +223,7 @@ export async function updateEnvioAction(id: string, formData: Envio): Promise<{ 
     return { success: false, error: error.message };
   }
   revalidatePath('/envios');
-  revalidatePath("/envios/" + id + "/editar");
+  revalidatePath(`/envios/${id}/editar`);
   return { success: true, data: updatedEnvio as Envio };
 }
 
@@ -194,15 +245,22 @@ export async function getEnvioByIdAction(id: string): Promise<{ envio?: EnvioCon
   }
 
   const envioData = { ...data } as any;
-  if (envioData.fecha_estimada_entrega) {
+  // Convert DATE string from Supabase to Date object for form compatibility
+  if (envioData.fecha_estimada_entrega && typeof envioData.fecha_estimada_entrega === 'string') {
     const dateStr = envioData.fecha_estimada_entrega;
-    if (typeof dateStr === 'string' && /^\\d{4}-\\d{2}-\\d{2}$/.test(dateStr)) {
-      envioData.fecha_estimada_entrega = new Date(dateStr + "T00:00:00");
-    } else if (dateStr instanceof Date) {
-       envioData.fecha_estimada_entrega = dateStr;
+    // Supabase DATE columns return as 'YYYY-MM-DD'. We need to parse it carefully.
+    // Appending 'T00:00:00Z' makes it parse as UTC midnight, which is often desired for date-only fields
+    // to avoid timezone shifts when converting back and forth.
+    const parsedDate = new Date(dateStr + "T00:00:00Z");
+    if (!isNaN(parsedDate.getTime())) { // Check if parsedDate is valid
+      envioData.fecha_estimada_entrega = parsedDate;
     } else {
-      envioData.fecha_estimada_entrega = null;
+      console.warn("Invalid date string for fecha_estimada_entrega:", dateStr);
+      envioData.fecha_estimada_entrega = null; // Or undefined, depending on how your form handles it
     }
+  } else if (envioData.fecha_estimada_entrega instanceof Date && isNaN(envioData.fecha_estimada_entrega.getTime())) {
+      console.warn("Invalid Date object received for fecha_estimada_entrega:", envioData.fecha_estimada_entrega);
+      envioData.fecha_estimada_entrega = null;
   }
 
 
@@ -214,7 +272,7 @@ export async function getEnviosAction(
   page: number = 1,
   pageSize: number = 10
 ): Promise<{ envios: EnvioConDetalles[]; count: number; error?: string }> {
-  
+
   let query = supabase
     .from('envios')
     .select(
@@ -223,16 +281,19 @@ export async function getEnviosAction(
     );
 
   if (filters.searchTerm) {
-    query = query.or("direccion_origen.ilike.%" + filters.searchTerm + "%,direccion_destino.ilike.%" + filters.searchTerm + "%,nombre_destinatario.ilike.%" + filters.searchTerm + "%");
+    query = query.or(`direccion_origen.ilike.%${filters.searchTerm}%,direccion_destino.ilike.%${filters.searchTerm}%,nombre_destinatario.ilike.%${filters.searchTerm}%,cliente_temporal_nombre.ilike.%${filters.searchTerm}%`);
   }
   if (filters.estado) {
     query = query.eq('estado', filters.estado);
   }
   if (filters.fechaDesde) {
-    query = query.gte('created_at', filters.fechaDesde); 
+    query = query.gte('created_at', filters.fechaDesde);
   }
   if (filters.fechaHasta) {
-    query = query.lte('created_at', filters.fechaHasta);
+    // Add one day to fechaHasta to include the entire day
+    const dateHasta = new Date(filters.fechaHasta);
+    dateHasta.setDate(dateHasta.getDate() + 1);
+    query = query.lt('created_at', dateHasta.toISOString().split('T')[0]);
   }
 
   const offset = (page - 1) * pageSize;
@@ -295,12 +356,29 @@ export async function getTiposServicioForSelect(): Promise<TipoServicio[]> {
 }
 
 export async function deleteEnvioAction(id: string): Promise<{ success: boolean; error?: string }> {
+  // Check if the envio is part of any active or planned reparto
+  const { data: paradas, error: paradasError } = await supabase
+    .from('paradas_reparto')
+    .select('reparto_id, repartos(estado)')
+    .eq('envio_id', id)
+    .in('repartos.estado', ['planificado', 'en_curso']);
+
+  if (paradasError) {
+    console.error('Error checking for associated paradas:', paradasError);
+    return { success: false, error: `Error al verificar paradas asociadas: ${paradasError.message}` };
+  }
+
+  if (paradas && paradas.length > 0) {
+    return { success: false, error: "No se puede eliminar: este envío forma parte de un reparto activo o planificado." };
+  }
+  
   const { error } = await supabase.from('envios').delete().eq('id', id);
   if (error) {
     console.error('Error deleting envio:', error);
     return { success: false, error: error.message };
   }
   revalidatePath('/envios');
-  revalidatePath('/dos-ruedas');
+  revalidatePath('/dos-ruedas'); // If it might be listed there
+  revalidatePath('/repartos'); // If it might affect reparto lists
   return { success: true };
 }

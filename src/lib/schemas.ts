@@ -32,8 +32,8 @@ export type EstadoReparto = z.infer<typeof EstadoRepartoEnum>;
 // --- Empresa Schemas ---
 export const EmpresaSchema = z.object({
   id: z.string().uuid().optional(),
-  nombre: z.string().min(2, "El nombre de la empresa es requerido y debe tener al menos 2 caracteres."),
-  direccion: z.string().min(5, "La dirección es requerida y debe tener al menos 5 caracteres."),
+  nombre: z.string().min(2, "El nombre de la empresa es requerido y debe tener al menos 2 caracteres.").default(""),
+  direccion: z.string().min(5, "La dirección es requerida y debe tener al menos 5 caracteres.").default(""),
   latitud: z.number().optional().nullable(),
   longitud: z.number().optional().nullable(),
   telefono: z.string().optional().nullable().default(""),
@@ -50,9 +50,9 @@ export type EmpresaFormValues = Omit<Empresa, 'id' | 'created_at' | 'updated_at'
 // --- Cliente Schemas ---
 export const ClienteSchema = z.object({
   id: z.string().uuid().optional(),
-  nombre: z.string().min(2, "El nombre es requerido y debe tener al menos 2 caracteres."),
-  apellido: z.string().min(2, "El apellido es requerido y debe tener al menos 2 caracteres."),
-  direccion: z.string().min(5, "La dirección es requerida y debe tener al menos 5 caracteres."),
+  nombre: z.string().min(2, "El nombre es requerido y debe tener al menos 2 caracteres.").default(""),
+  apellido: z.string().min(2, "El apellido es requerido y debe tener al menos 2 caracteres.").default(""),
+  direccion: z.string().min(5, "La dirección es requerida y debe tener al menos 5 caracteres.").default(""),
   latitud: z.number().optional().nullable(),
   longitud: z.number().optional().nullable(),
   telefono: z.string().optional().nullable().default(""),
@@ -131,7 +131,7 @@ export const TarifaDistanciaCalculadoraSchema = z.object({
     (val) => (val === "" || val === null || val === undefined ? null : parseFloat(String(val))),
     z.number().min(0, "El precio base no puede ser negativo.").nullable().optional().default(null)
   ),
-  precio_por_km: z.preprocess( // This field in this table is now interpreted as the TOTAL PRICE for the range by DosRuedas form
+  precio_por_km: z.preprocess( 
     (val) => parseFloat(String(val)),
     z.number().positive("El precio total para el rango debe ser un número positivo.")
   ),
@@ -152,15 +152,15 @@ export type TarifaDistanciaFormValues = Omit<TarifaDistanciaCalculadora, 'id' | 
 
 
 // --- Envío Schemas ---
-const timeRegex = /^(?:[01]\d|2[0-3]):(?:[0-5]\d)$/; // HH:MM format
+const timeRegex = /^(?:[01]\d|2[0-3]):[0-5]\d$/; // HH:MM format
 
 export const EnvioBaseSchema = z.object({
   id: z.string().uuid().optional(),
   remitente_cliente_id: z.string().uuid({ message: "Debe seleccionar un cliente remitente." }).nullable().optional(),
   nombre_destinatario: z.string().min(3, "El nombre del destinatario es requerido.").optional().nullable().default(null),
   telefono_destinatario: z.string().min(7, "El teléfono del destinatario es requerido.").optional().nullable().default(null),
-  cliente_temporal_nombre: z.string().min(3, "El nombre del cliente temporal es requerido.").nullable().optional().default(""),
-  cliente_temporal_telefono: z.string().min(7, "El teléfono del cliente temporal es requerido.").nullable().optional().default(""),
+  cliente_temporal_nombre: z.string().min(3, "El nombre del cliente temporal es requerido.").nullable().optional().default(null),
+  cliente_temporal_telefono: z.string().min(7, "El teléfono del cliente temporal es requerido.").nullable().optional().default(null),
   direccion_origen: z.string().min(5, "La dirección de origen es requerida.").default(""),
   latitud_origen: z.number().nullable().optional(),
   longitud_origen: z.number().nullable().optional(),
@@ -191,8 +191,8 @@ export const EnvioBaseSchema = z.object({
   ),
   estado: EstadoEnvioEnum.default('pendiente_asignacion'),
   fecha_estimada_entrega: z.date().nullable().optional(),
-  horario_retiro_desde: z.string().regex(timeRegex, "Formato HH:MM inválido.").nullable().optional().default(""),
-  horario_entrega_hasta: z.string().regex(timeRegex, "Formato HH:MM inválido.").nullable().optional().default(""),
+  horario_retiro_desde: z.string().regex(timeRegex, "Formato HH:MM inválido.").nullable().optional().default(null),
+  horario_entrega_hasta: z.string().regex(timeRegex, "Formato HH:MM inválido.").nullable().optional().default(null),
   repartidor_asignado_id: z.string().uuid().nullable().optional(),
   notas_conductor: z.string().nullable().optional().default(""),
   detalles_adicionales: z.string().nullable().optional().default(""),
@@ -231,6 +231,8 @@ export const DosRuedasEnvioFormSchema = z.object({
   nombre_destinatario: z.string().min(3, "El nombre del destinatario es requerido."),
   telefono_destinatario: z.string().min(7, "El teléfono del destinatario es requerido."),
   direccion_destino: z.string().min(5, "La dirección de entrega es requerida."),
+  latitud_destino: z.number().nullable().optional(), // ADDED
+  longitud_destino: z.number().nullable().optional(), // ADDED
   tipo_servicio_id: z.string().uuid("Debe seleccionar un tipo de servicio."),
   horario_retiro_desde: z.string().regex(timeRegex, "Formato HH:MM inválido.").optional().nullable().default(""),
   horario_entrega_hasta: z.string().regex(timeRegex, "Formato HH:MM inválido.").optional().nullable().default(""),
@@ -297,7 +299,7 @@ export interface RepartoConDetalles extends Reparto {
   repartidores?: Pick<Repartidor, 'id' | 'nombre'> | null;
   empresas?: Pick<Empresa, 'id' | 'nombre' | 'latitud' | 'longitud' | 'direccion'> | null;
   paradas_count?: number;
-  paradas_reparto?: ParadaConDetalles[]; // Changed from `paradas`
+  paradas_reparto?: ParadaConDetalles[]; 
 }
 
 // --- ParadaReparto Schemas ---
@@ -393,3 +395,5 @@ export interface MappableStop {
   id: string; // Original ID of the ParadaReparto or a special identifier like 'ORIGIN_EMPRESA_ANCHOR'
   location: { lat: number; lng: number };
 }
+
+```
