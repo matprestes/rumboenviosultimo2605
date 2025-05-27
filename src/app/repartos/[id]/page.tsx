@@ -7,9 +7,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ArrowLeft, Building, CalendarIcon as IconCalendar, CheckCircle, ClipboardEdit, Edit, Info, Loader2, MapPin, Package, Play, PowerOff, RefreshCw, Route, Truck, User, XCircle, InfoIcon, Sparkles } from "lucide-react";
+import { ArrowLeft, Building, CheckCircle, ClipboardEdit, InfoIcon, Loader2, MapPin, Package, Play, RefreshCw, Route, Sparkles, Truck, User, XCircle } from "lucide-react";
 import { getRepartoByIdAction, updateRepartoEstadoAction, updateParadaEstadoAction, reorderParadasAction } from '@/actions/reparto-actions';
-import type { RepartoConDetalles, ParadaConDetalles, EstadoReparto, EstadoEnvio, EnvioConDetalles, Empresa, MappableStop } from '@/lib/schemas';
+import type { RepartoConDetalles, ParadaConDetalles, EstadoReparto, EstadoEnvio, Empresa, MappableStop } from '@/lib/schemas';
 import { EstadoRepartoEnum, EstadoEnvioEnum } from '@/lib/schemas';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
@@ -32,8 +32,12 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
   const { toast } = useToast();
   const router = useRouter();
   
-  const resolvedParams = React.use(paramsProp);
-  const repartoId = resolvedParams.id;
+  // const resolvedParams = React.use(paramsProp);
+  // const repartoId = resolvedParams.id;
+  // Reverting React.use as it might cause issues if params is not always a promise
+  // and the warning it addresses is for future compatibility.
+  // Direct access for now, assuming paramsProp is resolved.
+  const [repartoId, setRepartoId] = React.useState<string | null>(null);
 
 
   const [reparto, setReparto] = React.useState<(RepartoConDetalles & { paradas: ParadaConDetalles[] }) | null>(null);
@@ -45,6 +49,109 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
   const [isMapsApiReady, setIsMapsApiReady] = React.useState(false);
   const [isOptimizingRoute, setIsOptimizingRoute] = React.useState(false);
 
+
+  React.useEffect(() => {
+    const resolveParams = async () => {
+      const resolved = await paramsProp;
+      setRepartoId(resolved.id);
+    };
+    resolveParams();
+  }, [paramsProp]);
+
+
+  const empresaOrigenParaMapa = React.useMemo(() => {
+    if (!reparto) return undefined;
+    // Prioritize an explicit "Retiro en empresa" parada if it exists and has its own description
+    // This might be less common if empresa_asociada_id is always the true origin.
+    const retiroStop = reparto.paradas_reparto?.find(p => !p.envio_id && p.descripcion_parada?.toLowerCase().includes('retiro en'));
+    
+    if (retiroStop && reparto.empresas && reparto.empresas.latitud != null && reparto.empresas.longitud != null) {
+        // If there's a retiroStop AND an associated empresa, use the empresa's details for the map marker.
+        // The retiroStop.id helps in reordering if it's part of the optimizable list.
+        return {
+            id: retiroStop.id || `empresa-${reparto.empresas.id}`, // Fallback ID if retiroStop.id is null
+            latitud: reparto.empresas.latitud,
+            longitud: reparto.empresas.longitud,
+            nombre: reparto.empresas.nombre,
+            direccion: reparto.empresas.direccion,
+        };
+    } else if (reparto.empresa_asociada_id && reparto.empresas && reparto.empresas.latitud != null && reparto.empresas.longitud != null) {
+      // This is for "Reparto por Lote" where the origin is the associated empresa
+      return {
+        id: reparto.empresas.id,
+        latitud: reparto.empresas.latitud,
+        longitud: reparto.empresas.longitud,
+        nombre: reparto.empresas.nombre,
+        direccion: reparto.empresas.direccion,
+      };
+    }
+    return undefined;
+  }, [reparto]);
+
+
+  const fetchRepartoDetails = React.useCallback(async () => {
+    if (!repartoId) return;
+    setIsLoading(true);
+    try {
+      const { reparto: data, error } = await getRepartoByIdAction(repartoId);
+      if (error || !data) {
+        toast({ title: "Error al Cargar Reparto", description: error || "Reparto no encontrado.", variant: "destructive" });
+        router.push('/repartos');
+        return;
+      }
+      
+      let repartoDataWithDate = { ...data };
+      if (data.fecha_reparto && typeof data.fecha_reparto === 'string') {
+        const parsedDate = parseISO(data.fecha_reparto); 
+        if (isValid(parsedDate)) {
+          repartoDataWithDate.fecha_reparto = parsedDate;
+        } else {
+          console.warn("Invalid date received for fecha_reparto:", data.fecha_reparto);
+           repartoDataWithDate.fecha_reparto = new Date(); 
+        }
+      }
+      
+      let rawParadas = repartoDataWithDate.paradas_reparto || [];
+      let finalParadas: ParadaConDetalles[] = [];
+      let deliveryStopOrderCounter = 1; 
+      
+      const explicitRetiroStop = rawParadas.find(p => !p.envio_id && p.descripcion_parada?.toLowerCase().includes('retiro en'));
+
+      if (explicitRetiroStop) {
+        finalParadas.push({...explicitRetiroStop, orden_visita: 0 }); // Assign 0 to explicit retiro
+      } else if (repartoDataWithDate.empresa_asociada_id && repartoDataWithDate.empresas) {
+        // If it's a lote and no explicit retiro, synthesize one for display consistency
+        finalParadas.push({
+            id: `synthetic-pickup-${repartoDataWithDate.id}`,
+            reparto_id: repartoDataWithDate.id!,
+            envio_id: null,
+            descripcion_parada: `Retiro en ${repartoDataWithDate.empresas.nombre}`,
+            orden_visita: 0,
+            estado_parada: 'asignado',
+            // ... other ParadaReparto fields as null or defaults
+            hora_estimada_llegada: null, hora_real_llegada: null, notas_parada: null,
+            created_at: new Date().toISOString(), updated_at: new Date().toISOString(), user_id: null, envios: null,
+        });
+      }
+  
+      const deliveryStops = rawParadas
+          .filter(p => p.envio_id && p.id !== explicitRetiroStop?.id) // Exclude already added explicit retiro
+          .sort((a, b) => (a.orden_visita ?? Infinity) - (b.orden_visita ?? Infinity)) 
+          .map(stop => ({ ...stop, orden_visita: deliveryStopOrderCounter++ }));
+      
+      finalParadas.push(...deliveryStops);
+      
+      setReparto({...repartoDataWithDate, paradas: finalParadas});
+      setParadasEdit(finalParadas);
+
+    } catch (err) {
+        console.error("Error in fetchRepartoDetails: ", err);
+        toast({title: "Error", description: "No se pudieron cargar los detalles del reparto.", variant: "destructive"});
+    } finally {
+        setIsLoading(false);
+    }
+  }, [repartoId, toast, router]);
+
   React.useEffect(() => {
     getGoogleMapsApi()
       .then((api) => {
@@ -53,79 +160,9 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
       })
       .catch((error) => {
         console.error("Error loading Google Maps API for RepartoDetallePage:", error);
-        toast({ title: "Error de Mapa", description: `No se pudo cargar Google Maps. Funcionalidades de mapa y optimización estarán limitadas. Detalle: ${error.message}`, variant: "destructive" });
+        toast({ title: "Error de Mapa", description: `No se pudo cargar Google Maps. Funcionalidades de mapa y optimización estarán limitadas. Detalle: ${(error as Error).message}`, variant: "destructive" });
       });
   }, [toast]);
-
-  const fetchRepartoDetails = React.useCallback(async () => {
-    if (!repartoId) return;
-    setIsLoading(true);
-    const { reparto: data, error } = await getRepartoByIdAction(repartoId);
-    if (error || !data) {
-      toast({ title: "Error al Cargar Reparto", description: error || "Reparto no encontrado.", variant: "destructive" });
-      router.push('/repartos');
-      return;
-    }
-    
-    let repartoDataWithDate = { ...data };
-    if (data.fecha_reparto && typeof data.fecha_reparto === 'string') {
-      const parsedDate = parseISO(data.fecha_reparto); 
-      if (isValid(parsedDate)) {
-        repartoDataWithDate.fecha_reparto = parsedDate;
-      } else {
-        console.warn("Invalid date received for fecha_reparto:", data.fecha_reparto);
-         repartoDataWithDate.fecha_reparto = new Date(); // Fallback or keep as string / null
-      }
-    }
-    
-    let rawParadas = repartoDataWithDate.paradas_reparto || [];
-    const empresaDeRetiro = repartoDataWithDate.empresas;
-    let finalParadas: ParadaConDetalles[] = [];
-
-    // 1. Identify or create the fixed origin stop (orden_visita = 0)
-    let fixedOriginParada: ParadaConDetalles | undefined = rawParadas.find(p => !p.envio_id && p.descripcion_parada?.toLowerCase().includes('retiro'));
-    
-    if (empresaDeRetiro) { // This reparto is associated with an empresa (likely a "lote")
-        if (fixedOriginParada) {
-            // Ensure it's marked as orden_visita 0
-            fixedOriginParada = { ...fixedOriginParada, orden_visita: 0 };
-            finalParadas.push(fixedOriginParada);
-        } else {
-            // Create a synthetic fixed origin stop if not explicitly present
-            fixedOriginParada = {
-                id: `pickup-origin-${repartoDataWithDate.id}`, // Synthetic ID
-                reparto_id: repartoDataWithDate.id!,
-                envio_id: null,
-                descripcion_parada: `Retiro en ${empresaDeRetiro.nombre}`,
-                orden_visita: 0, // Explicitly order 0
-                estado_parada: 'asignado', // Or another appropriate default
-                // Populate other fields as null or default as needed
-                hora_estimada_llegada: null,
-                hora_real_llegada: null,
-                notas_parada: null,
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-                user_id: null,
-                envios: null, // No specific envío linked to this origin stop itself
-            };
-            finalParadas.push(fixedOriginParada);
-        }
-    }
-
-    // 2. Add delivery stops (envio_id is present)
-    const deliveryStops = rawParadas
-        .filter(p => p.envio_id && p.id !== fixedOriginParada?.id) // Exclude if already added as fixed origin
-        .sort((a, b) => (a.orden_visita ?? Infinity) - (b.orden_visita ?? Infinity));
-
-    // Renumber delivery stops starting from 1
-    deliveryStops.forEach((stop, index) => {
-        finalParadas.push({ ...stop, orden_visita: index + 1 });
-    });
-    
-    setReparto({...repartoDataWithDate, paradas: finalParadas});
-    setParadasEdit(finalParadas);
-    setIsLoading(false);
-  }, [repartoId, toast, router]);
 
   React.useEffect(() => {
     if (repartoId) { 
@@ -143,21 +180,18 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
     let distance = 0;
     const pointsToCalculate: google.maps.LatLngLiteral[] = [];
     
-    const empresaOrigenCoordenadas = reparto.empresas?.latitud != null && reparto.empresas?.longitud != null
-      ? { lat: reparto.empresas.latitud, lng: reparto.empresas.longitud }
-      : null;
-
-    if (empresaOrigenCoordenadas) {
-        pointsToCalculate.push(empresaOrigenCoordenadas);
+    // Start with the empresaOrigen if available and valid
+    if (empresaOrigenParaMapa?.latitud != null && empresaOrigenParaMapa?.longitud != null) {
+        pointsToCalculate.push({ lat: empresaOrigenParaMapa.latitud, lng: empresaOrigenParaMapa.longitud });
     }
-
-    const paradasSortedForDistance = [...paradasEdit]
-        .filter(p => p.envio_id && p.envios?.latitud_destino != null && p.envios?.longitud_destino != null) // Only delivery stops with coords
-        .sort((a,b) => (a.orden_visita ?? Infinity) - (b.orden_visita ?? Infinity));
-
-    paradasSortedForDistance.forEach(parada => {
-       pointsToCalculate.push({ lat: parada.envios!.latitud_destino!, lng: parada.envios!.longitud_destino! });
-    });
+    
+    // Add delivery stops in their current order
+    paradasEdit
+      .filter(parada => parada.envio_id && parada.envios?.latitud_destino != null && parada.envios?.longitud_destino != null)
+      .sort((a,b) => (a.orden_visita ?? Infinity) - (b.orden_visita ?? Infinity))
+      .forEach(parada => {
+           pointsToCalculate.push({ lat: parada.envios!.latitud_destino!, lng: parada.envios!.longitud_destino! });
+       });
 
     if (pointsToCalculate.length < 2) {
         setTotalDistance(0);
@@ -170,19 +204,44 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
       distance += googleMaps.maps.geometry.spherical.computeDistanceBetween(from, to);
     }
     setTotalDistance(distance / 1000); 
-  }, [isMapsApiReady, googleMaps, reparto, paradasEdit]);
+  }, [isMapsApiReady, googleMaps, reparto, paradasEdit, empresaOrigenParaMapa]);
 
 
   React.useEffect(() => {
     calculateTotalDistance();
   }, [calculateTotalDistance]);
   
+  const getEstadoDisplayName = (estadoValue?: EstadoReparto | EstadoEnvio | null) => {
+    if (!estadoValue) return 'N/A';
+    return estadoValue.split('_').map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' ');
+  }
+  
+  const getEstadoBadgeVariant = (estado: EstadoReparto | EstadoEnvio | null | undefined) => {
+    switch (estado) {
+      case 'entregado':
+      case 'completado':
+        return 'bg-green-500 hover:bg-green-600 text-white';
+      case 'planificado':
+      case 'pendiente_asignacion':
+        return 'bg-yellow-500 hover:bg-yellow-600 text-black';
+      case 'asignado':
+      case 'en_curso': 
+      case 'en_camino':
+        return 'bg-blue-500 hover:bg-blue-600 text-white';
+      case 'no_entregado':
+      case 'cancelado':
+        return 'bg-red-500 hover:bg-red-600 text-white';
+      default:
+        return 'bg-gray-500 hover:bg-gray-600 text-white';
+    }
+  };
+  
   const handleRepartoEstadoChange = async (nuevoEstado: EstadoReparto) => {
     if (!repartoId) return;
     setIsUpdating(true);
     const result = await updateRepartoEstadoAction(repartoId, nuevoEstado);
     if (result.success) {
-      toast({ title: "Estado del Reparto Actualizado", description: `El reparto ahora está ${getEstadoRepartoDisplayName(nuevoEstado)}.` });
+      toast({ title: "Estado del Reparto Actualizado", description: `El reparto ahora está ${getEstadoDisplayName(nuevoEstado)}.` });
       fetchRepartoDetails(); 
     } else {
       toast({ title: "Error al Actualizar Estado", description: result.error, variant: "destructive" });
@@ -207,8 +266,8 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
     const nuevoOrden = nuevoOrdenStr === '' ? null : parseInt(nuevoOrdenStr, 10);
     setParadasEdit(prev => 
       prev.map(p => {
-        if (p.id === paradaId && p.envio_id) { // Only allow changing order for delivery stops
-          return { ...p, orden_visita: (nuevoOrden !== null && !isNaN(nuevoOrden) && nuevoOrden >=1) ? nuevoOrden : null };
+        if (p.id === paradaId && p.envio_id && (p.orden_visita !== 0 || p.orden_visita === null)) { // Allow editing if it's a delivery stop
+          return { ...p, orden_visita: (nuevoOrden !== null && !isNaN(nuevoOrden) && nuevoOrden >=1) ? nuevoOrden : p.orden_visita }; 
         }
         return p;
       })
@@ -235,15 +294,8 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
       .sort((a, b) => (a.orden_visita!) - (b.orden_visita!))
       .map(p => p.id!);
     
-    // Include fixed origin stop ID if it exists and is not already part of sortedDeliveryParadaIds (shouldn't be)
-    const fixedOriginParada = paradasEdit.find(p => p.orden_visita === 0 && !p.envio_id);
-    const allParadaIdsToReorder = fixedOriginParada ? [fixedOriginParada.id!, ...sortedDeliveryParadaIds] : sortedDeliveryParadaIds;
-    // The action should handle the order based on the full list it receives or re-assign based on index if needed.
-    // For now, we send only delivery parada IDs as the action expects.
-    // The reorderParadasAction should likely take an array of {id: string, orden: number} or just ordered IDs and assign order by index.
-
     setIsUpdating(true);
-    const result = await reorderParadasAction(repartoId, sortedDeliveryParadaIds); // Sending only delivery stop IDs for reordering based on their new order
+    const result = await reorderParadasAction(repartoId, sortedDeliveryParadaIds); 
     if (result.success) {
       toast({ title: "Orden de Paradas Actualizado", description: "El orden de las paradas de entrega ha sido guardado." });
       fetchRepartoDetails();
@@ -253,7 +305,7 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
     setIsUpdating(false);
   };
 
- const handleOptimizeRoute = async () => {
+  const handleOptimizeRoute = async () => {
     if (!reparto || !isMapsApiReady || !googleMaps) {
       toast({ title: "No se puede optimizar", description: "El mapa o los datos del reparto no están listos.", variant: "default" });
       return;
@@ -261,101 +313,102 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
     setIsOptimizingRoute(true);
 
     let originMappableStop: MappableStop | null = null;
-    const fixedOriginParadaFromEdit = paradasEdit.find(p => p.orden_visita === 0 && !p.envio_id);
+    
+    // 1. Find the fixed origin (parada 0)
+    const fixedOriginParada = paradasEdit.find(p => p.orden_visita === 0);
 
-    if (fixedOriginParadaFromEdit && empresaOrigenParaMapa?.latitud != null && empresaOrigenParaMapa?.longitud != null) {
-        originMappableStop = { id: fixedOriginParadaFromEdit.id!, location: { lat: empresaOrigenParaMapa.latitud, lng: empresaOrigenParaMapa.longitud } };
-    } else if (empresaOrigenParaMapa?.latitud != null && empresaOrigenParaMapa?.longitud != null) {
+    if (fixedOriginParada && empresaOrigenParaMapa?.latitud != null && empresaOrigenParaMapa?.longitud != null) {
+        originMappableStop = { id: fixedOriginParada.id!, location: { lat: empresaOrigenParaMapa.latitud, lng: empresaOrigenParaMapa.longitud } };
+    } else if (!fixedOriginParada && empresaOrigenParaMapa?.latitud != null && empresaOrigenParaMapa?.longitud != null) {
+        // Case for lote reparto where "Retiro" stop might be synthesized or missing, use empresaOrigenParaMapa
         originMappableStop = { id: 'ORIGIN_EMPRESA_ANCHOR', location: { lat: empresaOrigenParaMapa.latitud, lng: empresaOrigenParaMapa.longitud } };
-    } else {
-      // Fallback: use first delivery stop with coords as origin if no empresa origin
-      const firstDeliveryStopWithCoords = paradasEdit.find(p => p.envio_id && p.envios?.latitud_destino != null && p.envios?.longitud_destino != null);
-      if (firstDeliveryStopWithCoords) {
-        originMappableStop = { id: firstDeliveryStopWithCoords.id!, location: { lat: firstDeliveryStopWithCoords.envios!.latitud_destino!, lng: firstDeliveryStopWithCoords.envios!.longitud_destino! }};
-      }
+    }
+
+    if (!originMappableStop) {
+      toast({ title: "Error de Origen", description: "No se puede optimizar sin una parada de empresa/origen válida con coordenadas.", variant: "destructive" });
+      setIsOptimizingRoute(false);
+      return;
     }
     
-    if (!originMappableStop) {
-        toast({ title: "Error de Origen", description: "No se puede optimizar sin una parada de empresa/origen válida con coordenadas.", variant: "destructive" });
-        setIsOptimizingRoute(false);
-        return;
-    }
-
-    const deliveryParadasParaOptimizar = paradasEdit.filter(p =>
-        p.envio_id &&
-        p.id !== originMappableStop?.id && // Exclude if origin was one of the paradas
-        p.envios?.latitud_destino != null &&
-        p.envios?.longitud_destino != null &&
-        (!reparto.empresa_asociada_id || (reparto.empresa_asociada_id && (p.envios?.empresa_origen_id === reparto.empresa_asociada_id || (p.envios?.clientes && p.envios.clientes.empresa_id === reparto.empresa_asociada_id))))
+    // 2. Select optimizable delivery stops (orden > 0, valid coords, associated with the reparto's empresa if applicable)
+    const optimizableDeliveryParadas = paradasEdit.filter(p =>
+      p.envio_id &&
+      p.orden_visita !== 0 && // Exclude the origin stop itself
+      p.envios?.latitud_destino != null &&
+      p.envios?.longitud_destino != null &&
+      (!reparto.empresa_asociada_id || // If not a lote reparto, all client deliveries are optimizable
+        (reparto.empresa_asociada_id && // If it is a lote reparto
+          (p.envios?.empresa_origen_id === reparto.empresa_asociada_id || // Check if envio originates from the lote empresa OR
+           (p.envios?.clientes && p.envios.clientes.empresa_id === reparto.empresa_asociada_id) // Client belongs to lote empresa
+          )
+        )
+      )
     );
 
-    if (deliveryParadasParaOptimizar.length < 2) {
-        toast({ title: "Optimización no necesaria", description: "Se necesitan al menos dos paradas de cliente (asociadas a la empresa y con coordenadas) para optimizar después del origen.", variant: "default" });
-        setIsOptimizingRoute(false);
-        return;
+    if (optimizableDeliveryParadas.length < 2) {
+      toast({ title: "Optimización no necesaria", description: "Se necesitan al menos dos paradas de cliente válidas y asociadas (si aplica) para optimizar después del origen.", variant: "default" });
+      setIsOptimizingRoute(false);
+      return;
     }
+    
+    const deliveryMappableStops = optimizableDeliveryParadas.map(p => ({
+        id: p.id!,
+        location: { lat: p.envios!.latitud_destino!, lng: p.envios!.longitud_destino! }
+    }));
 
-    const pointsForGoogleApi: MappableStop[] = [
-        originMappableStop,
-        ...deliveryParadasParaOptimizar.map(p => ({
-            id: p.id!,
-            location: { lat: p.envios!.latitud_destino!, lng: p.envios!.longitud_destino! }
-        }))
-    ];
+    const pointsForGoogleApi: MappableStop[] = [originMappableStop, ...deliveryMappableStops];
 
     try {
-        const optimizedStopsFromApi = await optimizeDeliveryRoute(pointsForGoogleApi);
+      const optimizedStopsFromApi = await optimizeDeliveryRoute(pointsForGoogleApi);
+      
+      if (optimizedStopsFromApi && optimizedStopsFromApi.length > 1) { // Need at least origin + 1 destination
+        const originalParadasMap = new Map(paradasEdit.map(p => [p.id!, p]));
+        let newOrderedParadas: ParadaConDetalles[] = [];
         
-        if (optimizedStopsFromApi && optimizedStopsFromApi.length > 0) {
-            const originalParadasMap = new Map(paradasEdit.map(p => [p.id!, p]));
-            let newOrderedParadasEdit: ParadaConDetalles[] = [];
-
-            // 1. Add the fixed origin stop (parada 0 or empresa anchor) first
-            const originStopData = paradasEdit.find(p => p.id === originMappableStop!.id || (originMappableStop!.id === 'ORIGIN_EMPRESA_ANCHOR' && !p.envio_id));
-            if (originStopData) {
-                 newOrderedParadasEdit.push({ ...originStopData, orden_visita: 0 });
-            } else if (originMappableStop!.id === 'ORIGIN_EMPRESA_ANCHOR' && empresaOrigenParaMapa) {
-                 // Synthetic origin stop if it wasn't in paradasEdit
-                newOrderedParadasEdit.push({
-                    id: `pickup-origin-${reparto.id}`, reparto_id: reparto.id!, envio_id: null,
-                    descripcion_parada: `Retiro en ${empresaOrigenParaMapa.nombre}`,
-                    orden_visita: 0, estado_parada: 'asignado',
-                    // Fill other ParadaConDetalles fields as null or default
-                    hora_estimada_llegada: null, hora_real_llegada: null, notas_parada: null,
-                    created_at: new Date().toISOString(), updated_at: new Date().toISOString(), user_id: null, envios: null
-                });
-            }
-
-
-            // 2. Add optimized delivery stops
-            let currentDeliveryOrder = 1;
-            // optimizedStopsFromApi[0] is the origin. The rest are the optimized waypoints+destination.
-            for (let i = 1; i < optimizedStopsFromApi.length; i++) {
-                const optimizedStopId = optimizedStopsFromApi[i].id;
-                const originalParada = originalParadasMap.get(optimizedStopId);
-                if (originalParada && originalParada.envio_id) { // Ensure it's a delivery stop
-                    newOrderedParadasEdit.push({ ...originalParada, orden_visita: currentDeliveryOrder++ });
-                }
-            }
-            
-            // 3. Add any remaining paradas that were not part of the optimization (e.g., no coords, or not part of the 'lote')
-            const addedIds = new Set(newOrderedParadasEdit.map(p => p.id));
-            paradasEdit.forEach(originalParada => {
-                if (!addedIds.has(originalParada.id!) && originalParada.envio_id) { // Only add unoptimized delivery stops
-                    newOrderedParadasEdit.push({ ...originalParada, orden_visita: currentDeliveryOrder++ });
-                }
+        // Add the fixed origin stop first (parada 0)
+        const originParadaToKeep = paradasEdit.find(p => p.orden_visita === 0 || p.id === originMappableStop?.id);
+        if (originParadaToKeep) {
+            newOrderedParadas.push({ ...originParadaToKeep, orden_visita: 0 });
+        } else if (originMappableStop.id === 'ORIGIN_EMPRESA_ANCHOR' && empresaOrigenParaMapa) {
+            // Synthesize if it was an anchor and no explicit stop exists in paradasEdit
+             newOrderedParadas.push({
+                id: `synthetic-pickup-${reparto.id}`, reparto_id: reparto.id!, envio_id: null,
+                descripcion_parada: `Retiro en ${empresaOrigenParaMapa.nombre}`,
+                orden_visita: 0, estado_parada: 'asignado',
+                hora_estimada_llegada: null, hora_real_llegada: null, notas_parada: null,
+                created_at: new Date().toISOString(), updated_at: new Date().toISOString(), user_id: null, envios: null
             });
-            
-            setParadasEdit(newOrderedParadasEdit);
-            toast({ title: "Ruta Optimizada", description: "El orden de las paradas de entrega ha sido actualizado. Revise y guarde los cambios." });
-        } else {
-            toast({ title: "Error de Optimización", description: "No se pudo obtener una ruta optimizada desde Google Maps.", variant: "destructive" });
         }
+
+
+        // Add optimized delivery stops (API returns full list including origin/destination it used)
+        // We skip the first element from API as it's the origin we already handled.
+        let deliveryOrderCounter = 1;
+        optimizedStopsFromApi.slice(1).forEach(optimizedStopApiData => {
+          const originalParada = originalParadasMap.get(optimizedStopApiData.id);
+          if (originalParada && originalParada.envio_id) { // Ensure it's a delivery stop
+            newOrderedParadas.push({ ...originalParada, orden_visita: deliveryOrderCounter++ });
+          }
+        });
+        
+        // Add back any paradas that were not part of the optimization (e.g., no coords, or not for this empresa if filtered)
+        const addedParadaIds = new Set(newOrderedParadas.map(p => p.id));
+        paradasEdit.forEach(originalParada => {
+          if (!addedParadaIds.has(originalParada.id!) && originalParada.envio_id) {
+            newOrderedParadas.push({ ...originalParada, orden_visita: deliveryOrderCounter++ });
+          }
+        });
+        
+        setParadasEdit(newOrderedParadas);
+        toast({ title: "Ruta Optimizada", description: "El orden de las paradas de entrega ha sido actualizado. Revise y guarde los cambios." });
+      } else {
+        toast({ title: "Error de Optimización", description: "No se pudo obtener una ruta optimizada o no hay paradas suficientes para optimizar.", variant: "destructive" });
+      }
     } catch (error: any) {
-        console.error("Error en handleOptimizeRoute:", error);
-        toast({ title: "Error de Optimización", description: error.message || "Ocurrió un error desconocido.", variant: "destructive" });
+      console.error("Error en handleOptimizeRoute:", error);
+      toast({ title: "Error de Optimización", description: error.message || "Ocurrió un error desconocido.", variant: "destructive" });
     } finally {
-        setIsOptimizingRoute(false);
+      setIsOptimizingRoute(false);
     }
   };
 
@@ -368,34 +421,7 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
     return <p className="text-center text-destructive">Reparto no encontrado.</p>;
   }
 
-  const getEstadoDisplayName = (estadoValue?: EstadoReparto | EstadoEnvio | null) => {
-    if (!estadoValue) return 'N/A';
-    return estadoValue.split('_').map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' ');
-  }
-  
-  const getEstadoBadgeVariant = (estado: EstadoReparto | EstadoEnvio | null | undefined) => {
-    switch (estado) {
-      case 'entregado':
-      case 'completado':
-        return 'bg-green-500 hover:bg-green-600 text-white';
-      case 'planificado':
-      case 'pendiente_asignacion':
-        return 'bg-yellow-500 hover:bg-yellow-600 text-black';
-      case 'asignado':
-      case 'en_curso': // Combined 'en_curso' with 'asignado' for blue, or give it its own
-        return 'bg-blue-500 hover:bg-blue-600 text-white';
-      // case 'en_camino': // This was the previous value for 'en_curso' display
-      //     return 'bg-orange-500 hover:bg-orange-600 text-white';
-      case 'no_entregado':
-      case 'cancelado':
-        return 'bg-red-500 hover:bg-red-600 text-white';
-      default:
-        return 'bg-gray-500 hover:bg-gray-600 text-white';
-    }
-  };
-
-  // Filter out the origin stop from counts if it exists
-  const deliveryParadas = paradasEdit.filter(p => p.envio_id);
+  const deliveryParadas = paradasEdit.filter(p => p.envio_id && p.orden_visita !== 0);
   const resumenParadas = {
     total: deliveryParadas.length,
     pendientes: deliveryParadas.filter(p => p.estado_parada === 'asignado' || p.estado_parada === 'pendiente_asignacion').length,
@@ -404,27 +430,26 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
     canceladas: deliveryParadas.filter(p => p.estado_parada === 'cancelado').length,
   };
 
-  const empresaOrigenParaMapa = reparto.empresa_asociada_id && reparto.empresas 
-    ? {
-        id: reparto.empresas.id,
-        latitud: reparto.empresas.latitud,
-        longitud: reparto.empresas.longitud,
-        nombre: reparto.empresas.nombre,
-        direccion: reparto.empresas.direccion,
-      }
-    : undefined;
-
   const isRepartoFinalizado = reparto.estado === 'completado' || reparto.estado === 'cancelado';
   
+  const optimizableClientStopsCount = paradasEdit.filter(p =>
+    p.envio_id &&
+    p.orden_visita !== 0 &&
+    p.envios?.latitud_destino != null &&
+    p.envios?.longitud_destino != null &&
+    (!reparto.empresa_asociada_id ||
+      (reparto.empresa_asociada_id &&
+        (p.envios?.empresa_origen_id === reparto.empresa_asociada_id ||
+         (p.envios?.clientes && p.envios.clientes.empresa_id === reparto.empresa_asociada_id)
+        )
+      )
+    )
+  ).length;
+
   const canOptimize = !isRepartoFinalizado && 
                       isMapsApiReady &&
-                      (empresaOrigenParaMapa?.latitud != null && empresaOrigenParaMapa?.longitud != null) &&
-                      paradasEdit.filter(p => 
-                        p.envio_id && 
-                        p.envios?.latitud_destino != null && 
-                        p.envios?.longitud_destino != null &&
-                        (!reparto.empresa_asociada_id || (p.envios?.empresa_origen_id === reparto.empresa_asociada_id || (p.envios?.clientes && p.envios.clientes.empresa_id === reparto.empresa_asociada_id)))
-                      ).length >= 2;
+                      empresaOrigenParaMapa?.latitud != null && empresaOrigenParaMapa?.longitud != null &&
+                      optimizableClientStopsCount >= 2;
 
 
   return (
@@ -454,11 +479,11 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
                     <div>
                     <CardTitle className="text-primary">ID Reparto: {reparto.id?.substring(0, 8)}...</CardTitle>
                     <CardDescription className="text-sm text-muted-foreground">
-                        Fecha: {reparto.fecha_reparto && isValid(new Date(reparto.fecha_reparto)) ? format(new Date(reparto.fecha_reparto), "PPP", { locale: es }) : 'N/A'}
+                        Fecha: {reparto.fecha_reparto && isValid(reparto.fecha_reparto) ? format(reparto.fecha_reparto, "PPP", { locale: es }) : 'N/A'}
                     </CardDescription>
                     </div>
                     <Badge variant="default" className={cn("text-sm font-semibold", getEstadoBadgeVariant(reparto.estado))}>
-                    {getEstadoRepartoDisplayName(reparto.estado)}
+                    {getEstadoDisplayName(reparto.estado)}
                     </Badge>
                 </div>
                 </CardHeader>
@@ -513,7 +538,7 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
             <Card className="rounded-xl shadow-md h-full flex flex-col">
                 <CardHeader>
                 <div className="flex justify-between items-center">
-                    <CardTitle className="text-primary">Paradas ({resumenParadas.total})</CardTitle>
+                    <CardTitle className="text-primary">Paradas ({resumenParadas.total} entregas)</CardTitle>
                     {!isRepartoFinalizado && (
                       <Button onClick={handleSaveOrden} disabled={isUpdating || isOptimizingRoute} size="sm">
                         {(isUpdating || isOptimizingRoute) ? <Loader2 className="animate-spin mr-1 h-4 w-4"/> : <ClipboardEdit size={14} className="mr-1"/>} Guardar Orden
@@ -529,7 +554,7 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
                 </div>
                 </CardHeader>
                 <CardContent className="flex-grow overflow-hidden p-0">
-                {paradasEdit.filter(p => p.id).length === 0 ? ( // Check if there are actual paradas beyond a potential synthetic origin
+                {paradasEdit.filter(p => p.envio_id || (p.orden_visita === 0 && p.descripcion_parada)).length === 0 ? ( 
                     <p className="text-muted-foreground text-center py-10 px-4">Este reparto no tiene paradas asignadas.</p>
                 ) : (
                     <ScrollArea className="h-[calc(100vh-12rem)] sm:h-auto lg:max-h-[calc(100vh-20rem)]">
@@ -545,7 +570,7 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
                         {paradasEdit.map((parada) => (
                             <TableRow key={parada.id}>
                             <TableCell className="px-2 py-2 text-center">
-                                {parada.orden_visita === 0 && !parada.envio_id ? (
+                                {(parada.orden_visita === 0 && !parada.envio_id) || (parada.id?.startsWith('synthetic-pickup') && !parada.envio_id) ? (
                                     <span className="font-semibold text-muted-foreground">Origen</span>
                                 ) : (
                                     <Input 
@@ -553,7 +578,7 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
                                         value={parada.orden_visita ?? ""}
                                         onChange={(e) => handleOrdenChange(parada.id!, e.target.value)}
                                         className="w-12 h-8 text-center px-1 text-xs"
-                                        disabled={isUpdating || isRepartoFinalizado || isOptimizingRoute || parada.orden_visita === 0}
+                                        disabled={isUpdating || isRepartoFinalizado || isOptimizingRoute || parada.orden_visita === 0 || !parada.envio_id}
                                         min="1"
                                     />
                                 )}
@@ -588,16 +613,15 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
                                 <Select
                                 value={parada.estado_parada || undefined}
                                 onValueChange={(value) => handleParadaEstadoChange(parada.id!, value as EstadoEnvio, parada.envio_id || null)}
-                                disabled={isUpdating || isRepartoFinalizado || isOptimizingRoute || !parada.envio_id} // Disable for origin stop
+                                disabled={isUpdating || isRepartoFinalizado || isOptimizingRoute || !parada.envio_id || parada.orden_visita === 0 || parada.id?.startsWith('synthetic-pickup')}
                                 >
                                 <SelectTrigger className={cn("h-8 text-xs", getEstadoBadgeVariant(parada.estado_parada))}>
                                     <SelectValue placeholder="Estado..." />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    {EstadoEnvioEnum.options.filter(e => e !== 'pendiente_asignacion' && e !== 'asignado' && parada.envio_id).map(estado => ( // 'asignado' might be kept if you want to revert
+                                    {EstadoEnvioEnum.options.filter(e => e !== 'pendiente_asignacion' && e !== 'asignado' && parada.envio_id && parada.orden_visita !== 0 && !parada.id?.startsWith('synthetic-pickup')).map(estado => ( 
                                     <SelectItem key={estado} value={estado} className="text-xs">{getEstadoDisplayName(estado)}</SelectItem>
                                     ))}
-                                    {/* If it's an origin stop, maybe only "pendiente" and "completado" for pickup? For now, disabled */}
                                 </SelectContent>
                                 </Select>
                             </TableCell>
@@ -614,3 +638,5 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
     </div>
   );
 }
+
+```
