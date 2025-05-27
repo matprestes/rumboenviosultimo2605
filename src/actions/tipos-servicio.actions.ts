@@ -40,6 +40,9 @@ export async function createTipoServicioAction(
   const dataToInsert = {
     ...validatedFields.data,
     user_id: currentUserId,
+    // Asegurarse que los campos numéricos opcionales sean null si están vacíos
+    precio_base: validatedFields.data.precio_base === undefined || validatedFields.data.precio_base === null || isNaN(Number(validatedFields.data.precio_base)) ? null : Number(validatedFields.data.precio_base),
+    precio_extra_km_default: validatedFields.data.precio_extra_km_default === undefined || validatedFields.data.precio_extra_km_default === null || isNaN(Number(validatedFields.data.precio_extra_km_default)) ? null : Number(validatedFields.data.precio_extra_km_default),
   };
 
   const { data: newTipoServicio, error } = await supabase
@@ -106,6 +109,8 @@ export async function updateTipoServicioAction(
   
   const dataToUpdate = {
     ...validatedFields.data,
+    precio_base: validatedFields.data.precio_base === undefined || validatedFields.data.precio_base === null || isNaN(Number(validatedFields.data.precio_base)) ? null : Number(validatedFields.data.precio_base),
+    precio_extra_km_default: validatedFields.data.precio_extra_km_default === undefined || validatedFields.data.precio_extra_km_default === null || isNaN(Number(validatedFields.data.precio_extra_km_default)) ? null : Number(validatedFields.data.precio_extra_km_default),
     updated_at: new Date().toISOString(),
   };
 
@@ -205,7 +210,7 @@ async function checkOverlap(
     let query = supabase
         .from('tarifas_distancia_calculadora')
         .select('id, distancia_min_km, distancia_max_km')
-        .eq('tipo_servicio_id', tipoServicioId); // Changed from tipo_servicio to tipo_servicio_id
+        .eq('tipo_servicio_id', tipoServicioId); 
 
     if (excludeTarifaId) {
         query = query.not('id', 'eq', excludeTarifaId);
@@ -234,13 +239,12 @@ export async function createTarifaDistanciaAction(
   formData: TarifaDistanciaFormValues & { tipo_servicio_id: string } 
 ): Promise<{ success: boolean; data?: TarifaDistanciaCalculadora; error?: string }> {
   
-  // tipo_servicio_id is now part of formData directly
   const validatedFields = TarifaDistanciaCalculadoraSchema.omit({ 
     id: true, 
     created_at: true, 
     updated_at: true, 
     user_id: true,
-  }).safeParse(formData); // formData now includes tipo_servicio_id
+  }).safeParse(formData);
 
   if (!validatedFields.success) {
     console.error("Validation Errors (createTarifaDistanciaAction):", validatedFields.error.flatten());
@@ -258,6 +262,8 @@ export async function createTarifaDistanciaAction(
   const dataToInsert = {
     ...validatedFields.data,
     user_id: currentUserId,
+    // Asegurarse que los campos numéricos opcionales sean null si están vacíos
+    precio_base: validatedFields.data.precio_base === undefined || validatedFields.data.precio_base === null || isNaN(Number(validatedFields.data.precio_base)) ? null : Number(validatedFields.data.precio_base),
   };
 
   const { data: newTarifa, error } = await supabase
@@ -287,7 +293,7 @@ export async function updateTarifaDistanciaAction(
     created_at: true, 
     updated_at: true, 
     user_id: true,
-  }).safeParse(formData); // formData now includes tipo_servicio_id
+  }).safeParse(formData); 
 
   if (!validatedFields.success) {
     return { success: false, error: validatedFields.error.flatten().fieldErrorsToString() };
@@ -302,6 +308,7 @@ export async function updateTarifaDistanciaAction(
   
   const dataToUpdate = {
     ...validatedFields.data,
+    precio_base: validatedFields.data.precio_base === undefined || validatedFields.data.precio_base === null || isNaN(Number(validatedFields.data.precio_base)) ? null : Number(validatedFields.data.precio_base),
     updated_at: new Date().toISOString(),
   };
 
@@ -338,3 +345,4 @@ export async function deleteTarifaDistanciaAction(id: string, tipoServicioId: st
   revalidatePath(`/configuracion/tipos-servicio/${tipoServicioId}/tarifas`);
   return { success: true };
 }
+    

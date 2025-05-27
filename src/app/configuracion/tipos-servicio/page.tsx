@@ -17,7 +17,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Truck, PlusCircle, Loader2, Edit, Trash2, DollarSign, Settings } from "lucide-react";
+import { Truck, PlusCircle, Loader2, Edit, Trash2, DollarSignIcon as IconDollarSign, Settings } from "lucide-react"; // Renamed DollarSignIcon
 import type { TipoServicio } from '@/lib/schemas';
 import { getTiposServicioAction, deleteTipoServicioAction } from '@/actions/tipos-servicio.actions';
 import { useToast } from '@/hooks/use-toast';
@@ -71,7 +71,7 @@ export default function TiposServicioPage() {
             Gestión de Tipos de Servicio
           </h1>
           <p className="text-muted-foreground mt-1">
-            Administra los servicios ofrecidos y sus precios base.
+            Administra los servicios ofrecidos, sus precios base y precios extra por KM.
           </p>
         </div>
         <Button asChild>
@@ -105,7 +105,7 @@ export default function TiposServicioPage() {
         <CardHeader>
           <CardTitle>Listado de Tipos de Servicio</CardTitle>
           <CardDescription>
-            Visualiza, crea, edita y elimina los tipos de servicio.
+            Visualiza, crea, edita, elimina y configura tarifas para los tipos de servicio.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -125,6 +125,7 @@ export default function TiposServicioPage() {
                   <TableHead>Nombre</TableHead>
                   <TableHead>Descripción</TableHead>
                   <TableHead>Precio Base</TableHead>
+                  <TableHead>Precio Extra/KM Default</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
@@ -138,10 +139,15 @@ export default function TiposServicioPage() {
                         ? `$${Number(item.precio_base).toFixed(2)}` 
                         : '-'}
                     </TableCell>
+                    <TableCell>
+                      {item.precio_extra_km_default !== null && item.precio_extra_km_default !== undefined 
+                        ? `$${Number(item.precio_extra_km_default).toFixed(2)}` 
+                        : '-'}
+                    </TableCell>
                     <TableCell className="text-right">
                       <Button variant="outline" size="sm" asChild className="mr-2">
                         <Link href={`/configuracion/tipos-servicio/${item.id}/tarifas`}>
-                          <DollarSign className="h-4 w-4 mr-1" /> Tarifas
+                          <IconDollarSign className="h-4 w-4 mr-1" /> Tarifas Dist.
                         </Link>
                       </Button>
                       <Button variant="ghost" size="icon" asChild title="Editar">
@@ -161,5 +167,4 @@ export default function TiposServicioPage() {
     </div>
   );
 }
-
     

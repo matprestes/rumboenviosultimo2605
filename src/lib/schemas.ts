@@ -29,13 +29,6 @@ export const EstadoRepartoEnum = z.enum([
 });
 export type EstadoReparto = z.infer<typeof EstadoRepartoEnum>;
 
-// THIS ENUM IS LIKELY NO LONGER NEEDED FOR tarifas_distancia_calculadora
-// export const TipoServicioCalculadoraEnum = z.enum(['express', 'lowcost'], {
-//   errorMap: () => ({ message: "Seleccione un tipo de servicio para la calculadora válido." }),
-// });
-// export type TipoServicioCalculadora = z.infer<typeof TipoServicioCalculadoraEnum>;
-
-
 // --- Empresa Schemas ---
 export const EmpresaSchema = z.object({
   id: z.string().uuid().optional(),
@@ -79,7 +72,7 @@ export type ClienteFormValues = Omit<Cliente, 'id' | 'created_at' | 'updated_at'
 // --- Repartidor Schemas ---
 export const RepartidorSchema = z.object({
   id: z.string().uuid().optional(),
-  nombre: z.string().min(3, "El nombre del repartidor es requerido y debe tener al menos 3 caracteres."),
+  nombre: z.string().min(3, "El nombre del repartidor es requerido y debe tener al menos 3 caracteres.").default(""),
   estado: EstadoEnum.default("activo"),
   created_at: z.string().datetime().optional(),
   updated_at: z.string().datetime().optional(),
@@ -91,7 +84,7 @@ export type RepartidorFormValues = Omit<Repartidor, 'id' | 'created_at' | 'updat
 // --- TipoPaquete Schemas ---
 export const TipoPaqueteSchema = z.object({
   id: z.string().uuid().optional(),
-  nombre: z.string().min(3, "El nombre del tipo de paquete es requerido."),
+  nombre: z.string().min(3, "El nombre del tipo de paquete es requerido.").default(""),
   descripcion: z.string().optional().nullable().default(""),
   created_at: z.string().datetime().optional(),
   updated_at: z.string().datetime().optional(),
@@ -104,11 +97,15 @@ export type TipoPaqueteFormValues = Omit<TipoPaquete, 'id' | 'created_at' | 'upd
 // --- TipoServicio Schemas ---
 export const TipoServicioSchema = z.object({
   id: z.string().uuid().optional(),
-  nombre: z.string().min(3, "El nombre del tipo de servicio es requerido."),
+  nombre: z.string().min(3, "El nombre del tipo de servicio es requerido.").default(""),
   descripcion: z.string().optional().nullable().default(""),
   precio_base: z.preprocess(
     (val) => (val === "" || val === null || val === undefined ? null : parseFloat(String(val))),
     z.number().min(0, "El precio base no puede ser negativo.").nullable().optional().default(null)
+  ),
+  precio_extra_km_default: z.preprocess( // NUEVO CAMPO
+    (val) => (val === "" || val === null || val === undefined ? null : parseFloat(String(val))),
+    z.number().min(0, "El precio extra por KM no puede ser negativo.").nullable().optional().default(null)
   ),
   created_at: z.string().datetime().optional(),
   updated_at: z.string().datetime().optional(),
@@ -121,7 +118,7 @@ export type TipoServicioFormValues = Omit<TipoServicio, 'id' | 'created_at' | 'u
 // --- TarifaDistanciaCalculadora Schemas ---
 export const TarifaDistanciaCalculadoraSchema = z.object({
   id: z.string().uuid().optional(),
-  tipo_servicio_id: z.string().uuid("Debe seleccionar un tipo de servicio."), // Changed from enum to UUID
+  tipo_servicio_id: z.string().uuid("Debe seleccionar un tipo de servicio."),
   distancia_min_km: z.preprocess(
     (val) => parseFloat(String(val)),
     z.number().min(0, "La distancia mínima no puede ser negativa.")
@@ -164,17 +161,17 @@ export const EnvioBaseSchema = z.object({
   telefono_destinatario: z.string().min(7, "El teléfono del destinatario es requerido.").optional().nullable().default(""),
   cliente_temporal_nombre: z.string().min(3, "El nombre del cliente temporal es requerido.").nullable().optional().default(null),
   cliente_temporal_telefono: z.string().min(7, "El teléfono del cliente temporal es requerido.").nullable().optional().default(null),
-  direccion_origen: z.string().min(5, "La dirección de origen es requerida."),
+  direccion_origen: z.string().min(5, "La dirección de origen es requerida.").default(""),
   latitud_origen: z.number().nullable().optional(),
   longitud_origen: z.number().nullable().optional(),
   empresa_origen_id: z.string().uuid().nullable().optional(),
   notas_origen: z.string().nullable().optional().default(""),
-  direccion_destino: z.string().min(5, "La dirección de destino es requerida."),
+  direccion_destino: z.string().min(5, "La dirección de destino es requerida.").default(""),
   latitud_destino: z.number().nullable().optional(),
   longitud_destino: z.number().nullable().optional(),
   empresa_destino_id: z.string().uuid().nullable().optional(),
   notas_destino: z.string().nullable().optional().default(""),
-  tipo_paquete_id: z.string().uuid({ message: "Debe seleccionar un tipo de paquete."}),
+  tipo_paquete_id: z.string().uuid({ message: "Debe seleccionar un tipo de paquete."}).optional(),
   peso_kg: z.preprocess(
     (val) => {
       if (val === "" || val === null || val === undefined) return null;
@@ -183,7 +180,7 @@ export const EnvioBaseSchema = z.object({
     },
     z.number().positive("El peso debe ser un número positivo.").nullable().optional().default(null)
   ),
-  tipo_servicio_id: z.string().uuid({ message: "Debe seleccionar un tipo de servicio."}),
+  tipo_servicio_id: z.string().uuid({ message: "Debe seleccionar un tipo de servicio."}).optional(),
   precio: z.preprocess(
     (val) => {
       if (val === "" || val === null || val === undefined) return 0;
@@ -194,8 +191,8 @@ export const EnvioBaseSchema = z.object({
   ),
   estado: EstadoEnvioEnum.default('pendiente_asignacion'),
   fecha_estimada_entrega: z.date().nullable().optional(),
-  horario_retiro_desde: z.string().regex(timeRegex, "Formato HH:MM inválido para retiro.").nullable().optional().default(null),
-  horario_entrega_hasta: z.string().regex(timeRegex, "Formato HH:MM inválido para entrega.").nullable().optional().default(null),
+  horario_retiro_desde: z.string().regex(timeRegex, "Formato HH:MM inválido.").nullable().optional().default(null),
+  horario_entrega_hasta: z.string().regex(timeRegex, "Formato HH:MM inválido.").nullable().optional().default(null),
   repartidor_asignado_id: z.string().uuid().nullable().optional(),
   notas_conductor: z.string().nullable().optional().default(""),
   detalles_adicionales: z.string().nullable().optional().default(""),
@@ -369,3 +366,5 @@ export type ActiveRepartoListItem = Pick<Reparto, 'id' | 'fecha_reparto' | 'esta
     envios?: Pick<Envio, 'latitud_destino' | 'longitud_destino' | 'direccion_destino'> | null;
   }>;
 };
+
+    
