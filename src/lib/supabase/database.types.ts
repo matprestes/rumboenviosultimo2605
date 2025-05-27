@@ -405,7 +405,7 @@ export type Database = {
           id: string
           precio_base: number | null
           precio_por_km: number
-          tipo_servicio: Database["public"]["Enums"]["tipo_servicio_calculadora_enum"]
+          tipo_servicio_id: string
           updated_at: string | null
           user_id: string | null
         }
@@ -416,7 +416,7 @@ export type Database = {
           id?: string
           precio_base?: number | null
           precio_por_km: number
-          tipo_servicio: Database["public"]["Enums"]["tipo_servicio_calculadora_enum"]
+          tipo_servicio_id: string
           updated_at?: string | null
           user_id?: string | null
         }
@@ -427,11 +427,19 @@ export type Database = {
           id?: string
           precio_base?: number | null
           precio_por_km?: number
-          tipo_servicio?: Database["public"]["Enums"]["tipo_servicio_calculadora_enum"]
+          tipo_servicio_id?: string
           updated_at?: string | null
           user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "fk_tarifas_tipo_servicio"
+            columns: ["tipo_servicio_id"]
+            isOneToOne: false
+            referencedRelation: "tipos_servicio"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       tipos_paquete: {
         Row: {
