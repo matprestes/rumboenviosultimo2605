@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { DosRuedasEnvioFormSchema, type DosRuedasEnvioFormValues, type Cliente, type TipoServicio, type TarifaDistanciaCalculadora } from '@/lib/schemas';
+import { DosRuedasEnvioFormSchema, type DosRuedasEnvioFormValues, type Cliente, type TipoServicio, type TarifaDistanciaCalculadora, type DosRuedasCalculatedShipment } from '@/lib/schemas';
 import { Button } from '@/components/ui/button';
 import {
   Form,
@@ -36,6 +36,7 @@ interface DosRuedasEnvioFormProps {
   tiposServicio: TipoServicio[];
   isSubmitting: boolean;
   setIsSubmitting: (isSubmitting: boolean) => void;
+  onShipmentCalculated: (data: DosRuedasCalculatedShipment | null) => void; // New prop
 }
 
 export function DosRuedasEnvioForm({
@@ -44,6 +45,7 @@ export function DosRuedasEnvioForm({
   tiposServicio,
   isSubmitting,
   setIsSubmitting,
+  onShipmentCalculated, // New prop
 }: DosRuedasEnvioFormProps) {
   const { toast } = useToast();
   const [googleMaps, setGoogleMaps] = React.useState<typeof google | null>(null);
@@ -52,6 +54,7 @@ export function DosRuedasEnvioForm({
   const [geocodedDest, setGeocodedDest] = React.useState<GeocodeResult | null>(null);
   const [selectedSender, setSelectedSender] = React.useState<Pick<Cliente, 'id' | 'nombre' | 'apellido' | 'direccion' | 'telefono' | 'latitud' | 'longitud'> | null>(null);
   const [isCalculatingPrice, setIsCalculatingPrice] = React.useState(false);
+  const [calculatedDistance, setCalculatedDistance] = React.useState<number | null>(null);
 
   const form = useForm<DosRuedasEnvioFormValues>({
     resolver: zodResolver(DosRuedasEnvioFormSchema),
@@ -91,101 +94,158 @@ export function DosRuedasEnvioForm({
   React.useEffect(() => {
     const cliente = clientes.find(c => c.id === selectedSenderId);
     setSelectedSender(cliente || null);
-    if (cliente) {
-        form.setValue('precio', 0); 
+    form.setValue('precio', 0);
+    setCalculatedDistance(null);
+    onShipmentCalculated(null); // Clear summary when sender changes
+  }, [selectedSenderId, clientes, form, onShipmentCalculated]);
+
+
+  const calculateAndSetPrice = React.useCallback(async () => {
+    if (!isMapsApiReady || !googleMaps || !selectedSender || !selectedSender.latitud || !selectedSender.longitud || !geocodedDest || !geocodedDest.lat || !geocodedDest.lng || !selectedTipoServicioId) {
+      form.setValue('precio', 0);
+      setCalculatedDistance(null);
+      onShipmentCalculated(null);
+      return;
     }
-  }, [selectedSenderId, clientes, form]);
 
-  React.useEffect(() => {
-    const calculateAndSetPrice = async () => {
-      if (!isMapsApiReady || !googleMaps || !selectedSender || !selectedSender.latitud || !selectedSender.longitud || !geocodedDest || !geocodedDest.lat || !geocodedDest.lng || !selectedTipoServicioId) {
-        form.setValue('precio', 0);
-        return;
-      }
+    setIsCalculatingPrice(true);
+    form.setValue('precio', 0); 
+    setCalculatedDistance(null);
+    onShipmentCalculated(null);
 
-      setIsCalculatingPrice(true);
-      form.setValue('precio', 0); 
+    let distanceKm = 0;
+    let calculationMethod = "No se pudo calcular.";
 
-      try {
-        const directionsService = new googleMaps.maps.DirectionsService();
-        const request: google.maps.DirectionsRequest = {
-          origin: { lat: selectedSender.latitud, lng: selectedSender.longitud },
-          destination: { lat: geocodedDest.lat, lng: geocodedDest.lng },
-          travelMode: googleMaps.maps.TravelMode.DRIVING,
-        };
+    try {
+      const directionsService = new googleMaps.maps.DirectionsService();
+      const request: google.maps.DirectionsRequest = {
+        origin: { lat: selectedSender.latitud, lng: selectedSender.longitud },
+        destination: { lat: geocodedDest.lat, lng: geocodedDest.lng },
+        travelMode: googleMaps.maps.TravelMode.DRIVING,
+        region: 'AR', // Bias towards Argentina
+      };
 
-        directionsService.route(request, async (result, status) => {
-          if (status === googleMaps.maps.DirectionsStatus.OK && result && result.routes && result.routes.length > 0) {
-            const route = result.routes[0];
-            let distanceKm = 0;
-            if (route.legs && route.legs.length > 0 && route.legs[0].distance) {
-              distanceKm = route.legs[0].distance.value / 1000; 
-            } else {
-              toast({ title: "Cálculo de Precio", description: "No se pudo obtener la distancia de la ruta.", variant: "default" });
-              setIsCalculatingPrice(false);
-              form.setValue('precio', 0);
-              return;
-            }
-
-            const { tipoServicio, error: tsError } = await getTipoServicioByIdAction(selectedTipoServicioId);
-            const { tarifas, error: tarifasError } = await getTarifasByTipoServicioAction(selectedTipoServicioId);
-
-            if (tsError || tarifasError || !tipoServicio) {
-              toast({ title: "Error de Cálculo", description: "No se pudieron obtener las tarifas del servicio.", variant: "destructive" });
-              setIsCalculatingPrice(false);
-              form.setValue('precio', 0);
-              return;
-            }
-
-            let calculatedPrice = 0;
-            let specificTariffApplied = false;
-            let appliedTariffDescription = "Tarifa general del servicio aplicada.";
-
-            if (tarifas && tarifas.length > 0) {
-              const sortedTarifas = [...tarifas].sort((a, b) => a.distancia_min_km - b.distancia_min_km);
-              for (const tarifa of sortedTarifas) {
-                if (distanceKm >= tarifa.distancia_min_km && distanceKm <= tarifa.distancia_max_km) {
-                  calculatedPrice = tarifa.precio_por_km; // This is the fixed total price for the range
-                  specificTariffApplied = true;
-                  appliedTariffDescription = `Tarifa por rango: ${tarifa.distancia_min_km}km - ${tarifa.distancia_max_km}km. Precio: $${tarifa.precio_por_km.toFixed(2)}`;
-                  break;
-                }
-              }
-            }
-            
-            if (!specificTariffApplied) {
-              calculatedPrice = (tipoServicio.precio_base || 0) + (distanceKm * (tipoServicio.precio_extra_km_default || 0));
-              if (tipoServicio.precio_extra_km_default === null || tipoServicio.precio_extra_km_default === undefined) {
-                 appliedTariffDescription = `Aplicado precio base del servicio ($${(tipoServicio.precio_base || 0).toFixed(2)}) (sin tarifa por KM adicional).`;
-              } else {
-                appliedTariffDescription = `Aplicado precio base ($${(tipoServicio.precio_base || 0).toFixed(2)}) + $${(tipoServicio.precio_extra_km_default || 0).toFixed(2)}/km.`;
-              }
-            }
-            
-            const finalPrice = parseFloat(calculatedPrice.toFixed(2));
-            form.setValue('precio', finalPrice);
-            toast({ title: "Precio Estimado", description: `Distancia: ${distanceKm.toFixed(2)} km. ${appliedTariffDescription} Total: $${finalPrice.toFixed(2)}`, duration: 8000});
-
+      const directionsResult = await new Promise<google.maps.DirectionsResult | null>((resolve, reject) => {
+        directionsService.route(request, (result, status) => {
+          if (status === googleMaps.maps.DirectionsStatus.OK && result) {
+            resolve(result);
           } else {
-            toast({ title: "Error de Distancia", description: `No se pudo calcular la ruta: ${status}`, variant: "destructive" });
-            form.setValue('precio', 0);
+            console.error(`Error de Directions API: ${status}`);
+            reject(new Error(`No se pudo calcular la ruta: ${status}`));
           }
-          setIsCalculatingPrice(false);
         });
-      } catch (error: any) {
-        toast({ title: "Error Calculando Precio", description: error.message || "Ocurrió un error.", variant: "destructive" });
-        form.setValue('precio', 0);
-        setIsCalculatingPrice(false);
-      }
-    };
+      });
 
-    if (selectedSender && geocodedDest && selectedTipoServicioId && isMapsApiReady && direccionDestino) {
-      calculateAndSetPrice();
-    } else {
-        form.setValue('precio', 0);
+      if (directionsResult && directionsResult.routes && directionsResult.routes.length > 0) {
+        const route = directionsResult.routes[0];
+        if (route.legs && route.legs.length > 0 && route.legs[0].distance) {
+          distanceKm = route.legs[0].distance.value / 1000;
+          setCalculatedDistance(parseFloat(distanceKm.toFixed(2)));
+        } else {
+          throw new Error("No se pudo obtener la distancia de la ruta.");
+        }
+      } else {
+        throw new Error("No se encontraron rutas.");
+      }
+
+      const { tipoServicio, error: tsError } = await getTipoServicioByIdAction(selectedTipoServicioId);
+      const { tarifas, error: tarifasError } = await getTarifasByTipoServicioAction(selectedTipoServicioId);
+
+      if (tsError || tarifasError || !tipoServicio) {
+        throw new Error("No se pudieron obtener las tarifas del servicio.");
+      }
+
+      let calculatedPrice = 0;
+      let specificTariffApplied = false;
+      
+      if (tarifas && tarifas.length > 0) {
+        const sortedTarifas = [...tarifas].sort((a, b) => a.distancia_min_km - b.distancia_min_km);
+        
+        // Check specific ranges
+        for (const tarifa of sortedTarifas) {
+          if (distanceKm >= tarifa.distancia_min_km && distanceKm <= tarifa.distancia_max_km) {
+            calculatedPrice = tarifa.precio_por_km; // This is the fixed total price for the range
+            specificTariffApplied = true;
+            calculationMethod = `Tarifa por rango (${tarifa.distancia_min_km}km - ${tarifa.distancia_max_km}km) aplicada.`;
+            break;
+          }
+        }
+
+        // Check if exceeding highest defined range
+        if (!specificTariffApplied && sortedTarifas.length > 0) {
+          const tarifaMasAlta = sortedTarifas[sortedTarifas.length - 1];
+          if (distanceKm > tarifaMasAlta.distancia_max_km) {
+            if (tipoServicio.precio_base && tipoServicio.precio_base > 0) {
+              const distanciaExcedente = distanceKm - tarifaMasAlta.distancia_max_km;
+              calculatedPrice = tarifaMasAlta.precio_por_km + (distanciaExcedente * tipoServicio.precio_base);
+              specificTariffApplied = true; // Technically it's an extension of a specific tariff
+              calculationMethod = `Tarifa rango alto ($${tarifaMasAlta.precio_por_km.toFixed(2)}) + excedente ($${tipoServicio.precio_base.toFixed(2)}/km).`;
+            } else {
+              calculatedPrice = tarifaMasAlta.precio_por_km; // No extra cost for exceeding if no service base price
+              specificTariffApplied = true;
+              calculationMethod = `Tarifa rango alto ($${tarifaMasAlta.precio_por_km.toFixed(2)}) aplicada (sin costo por km excedente).`;
+              toast({ title: "Advertencia de Precio", description: "El servicio no tiene precio base configurado para calcular costo por km excedente. Se aplicó la tarifa del rango más alto.", variant: "default", duration: 7000 });
+            }
+          }
+        }
+      }
+      
+      // Fallback to general service rates
+      if (!specificTariffApplied) {
+        calculatedPrice = (tipoServicio.precio_base || 0) + (distanceKm * (tipoServicio.precio_extra_km_default || 0));
+        if (tipoServicio.precio_extra_km_default === null || tipoServicio.precio_extra_km_default === undefined || tipoServicio.precio_extra_km_default === 0) {
+            calculationMethod = `Precio base del servicio ($${(tipoServicio.precio_base || 0).toFixed(2)}) aplicado (sin tarifa por KM adicional).`;
+        } else {
+            calculationMethod = `Precio base ($${(tipoServicio.precio_base || 0).toFixed(2)}) + $${(tipoServicio.precio_extra_km_default || 0).toFixed(2)}/km aplicado.`;
+        }
+      }
+      
+      const finalPrice = parseFloat(calculatedPrice.toFixed(2));
+      form.setValue('precio', finalPrice);
+      toast({ title: "Precio Estimado Calculado", description: `${calculationMethod} Distancia: ${distanceKm.toFixed(2)} km. Total: $${finalPrice.toFixed(2)}`, duration: 8000});
+
+      const formDataValues = form.getValues();
+      onShipmentCalculated({
+        remitenteNombre: `${selectedSender.nombre} ${selectedSender.apellido}`,
+        remitenteDireccion: selectedSender.direccion,
+        remitenteTelefono: selectedSender.telefono,
+        destinatarioNombre: formDataValues.nombre_destinatario,
+        destinatarioTelefono: formDataValues.telefono_destinatario,
+        destinatarioDireccion: geocodedDest.formattedAddress,
+        destinatarioLat: geocodedDest.lat,
+        destinatarioLng: geocodedDest.lng,
+        tipoServicioNombre: tipoServicio.nombre,
+        horarioRetiro: formDataValues.horario_retiro_desde || null,
+        horarioEntrega: formDataValues.horario_entrega_hasta || null,
+        precioCalculado: finalPrice,
+        distanciaKm: parseFloat(distanceKm.toFixed(2)),
+        detallesAdicionales: formDataValues.detalles_adicionales || null,
+        calculationMethod: calculationMethod,
+      });
+
+    } catch (error: any) {
+      toast({ title: "Error Calculando Precio", description: error.message || "Ocurrió un error.", variant: "destructive" });
+      form.setValue('precio', 0);
+      setCalculatedDistance(null);
+      onShipmentCalculated(null);
+    } finally {
+      setIsCalculatingPrice(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSender, geocodedDest, selectedTipoServicioId, isMapsApiReady, direccionDestino]);
+  }, [
+      isMapsApiReady, 
+      googleMaps, 
+      selectedSender, 
+      geocodedDest, 
+      selectedTipoServicioId, 
+      form, 
+      toast, 
+      onShipmentCalculated
+  ]);
+
+  React.useEffect(() => {
+    calculateAndSetPrice();
+  }, [calculateAndSetPrice]);
 
 
   const handleGeocodeDest = async () => {
@@ -201,12 +261,16 @@ export function DosRuedasEnvioForm({
     setIsGeocodingDest(true);
     setGeocodedDest(null); 
     form.setValue('precio', 0); 
+    setCalculatedDistance(null);
+    onShipmentCalculated(null); // Clear summary during geocoding
+
     try {
       const result = await geocodeAddress(addressValue);
       if (result) {
         form.setValue("direccion_destino", result.formattedAddress, { shouldValidate: true });
         setGeocodedDest(result); 
         toast({ title: "Geocodificación Exitosa", description: `Dirección de entrega verificada: ${result.formattedAddress}` });
+        // Price calculation will be triggered by useEffect watching geocodedDest
       } else {
         toast({ title: "Error de Geocodificación", description: "No se pudo encontrar la dirección de entrega o está fuera de Mar del Plata.", variant: "destructive" });
       }
@@ -217,7 +281,7 @@ export function DosRuedasEnvioForm({
     }
   };
 
-  const processSubmit = async (formData: DosRuedasEnvioFormValues) => {
+  const processSubmit = async (formDataValues: DosRuedasEnvioFormValues) => {
     if (!selectedSender || !selectedSender.id) {
         toast({title: "Error de Remitente", description: "Por favor, seleccione un remitente.", variant: "destructive"});
         return;
@@ -236,7 +300,7 @@ export function DosRuedasEnvioForm({
     }
 
     setIsSubmitting(true);
-    const result = await onSubmit(formData); 
+    const result = await onSubmit(formDataValues); 
     setIsSubmitting(false);
      if (result.success) {
       form.reset({ 
@@ -252,6 +316,8 @@ export function DosRuedasEnvioForm({
       });
       setSelectedSender(null);
       setGeocodedDest(null);
+      setCalculatedDistance(null);
+      onShipmentCalculated(null); // Clear summary on successful submission
     }
   };
 
@@ -275,6 +341,8 @@ export function DosRuedasEnvioForm({
                       setGeocodedDest(null); 
                       form.setValue('direccion_destino', ''); 
                       form.setValue('precio', 0);
+                      setCalculatedDistance(null);
+                      onShipmentCalculated(null);
                     }} 
                     value={field.value} 
                     defaultValue={field.value}
@@ -358,6 +426,8 @@ export function DosRuedasEnvioForm({
                             field.onChange(e);
                             setGeocodedDest(null); 
                             form.setValue('precio', 0);
+                            setCalculatedDistance(null);
+                            onShipmentCalculated(null);
                         }}
                     /></FormControl>
                     <Button type="button" onClick={handleGeocodeDest} disabled={isGeocodingDest || !isMapsApiReady || !field.value} variant="outline" size="icon" title="Verificar Dirección">
@@ -387,6 +457,8 @@ export function DosRuedasEnvioForm({
                     onValueChange={(value) => {
                         field.onChange(value);
                         form.setValue('precio', 0); 
+                        setCalculatedDistance(null);
+                        onShipmentCalculated(null);
                     }} 
                     value={field.value} 
                     defaultValue={field.value}
@@ -448,7 +520,7 @@ export function DosRuedasEnvioForm({
                     className="bg-muted/80 cursor-not-allowed font-semibold"
                     value={field.value ?? 0}
                   /></FormControl>
-                  <FormDescription>El precio se calcula automáticamente según distancia y servicio. Será confirmado por un operador.</FormDescription>
+                  <FormDescription>El precio se calcula automáticamente. Será confirmado por un operador.</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}

@@ -128,12 +128,12 @@ export const TarifaDistanciaCalculadoraSchema = z.object({
     z.number().positive("La distancia máxima debe ser un número positivo.")
   ),
   precio_base: z.preprocess(
-    (val) => (val === "" || val === null || val === undefined || isNaN(Number(val)) ? null : parseFloat(String(val))),
+    (val) => (val === "" || val === null || val === undefined ? null : parseFloat(String(val))),
     z.number().min(0, "El precio base no puede ser negativo.").nullable().optional().default(null)
   ),
-  precio_por_km: z.preprocess(
+  precio_por_km: z.preprocess( // This field in this table is now interpreted as the TOTAL PRICE for the range by DosRuedas form
     (val) => parseFloat(String(val)),
-    z.number().positive("El precio por km debe ser un número positivo.")
+    z.number().positive("El precio total para el rango debe ser un número positivo.")
   ),
   created_at: z.string().datetime().optional(),
   updated_at: z.string().datetime().optional(),
@@ -171,7 +171,7 @@ export const EnvioBaseSchema = z.object({
   longitud_destino: z.number().nullable().optional(),
   empresa_destino_id: z.string().uuid().nullable().optional(),
   notas_destino: z.string().nullable().optional().default(""),
-  tipo_paquete_id: z.string().uuid({ message: "Debe seleccionar un tipo de paquete."}).optional(),
+  tipo_paquete_id: z.string().uuid({ message: "Debe seleccionar un tipo de paquete."}).nullable().optional(),
   peso_kg: z.preprocess(
     (val) => {
       if (val === "" || val === null || val === undefined) return null;
@@ -180,7 +180,7 @@ export const EnvioBaseSchema = z.object({
     },
     z.number().positive("El peso debe ser un número positivo.").nullable().optional().default(null)
   ),
-  tipo_servicio_id: z.string().uuid({ message: "Debe seleccionar un tipo de servicio."}).optional(),
+  tipo_servicio_id: z.string().uuid({ message: "Debe seleccionar un tipo de servicio."}).nullable().optional(),
   precio: z.preprocess(
     (val) => {
       if (val === "" || val === null || val === undefined) return 0;
@@ -231,10 +231,10 @@ export const DosRuedasEnvioFormSchema = z.object({
   nombre_destinatario: z.string().min(3, "El nombre del destinatario es requerido."),
   telefono_destinatario: z.string().min(7, "El teléfono del destinatario es requerido."),
   direccion_destino: z.string().min(5, "La dirección de entrega es requerida."),
-  tipo_servicio_id: z.string().uuid("Debe seleccionar un tipo de servicio."), // Added
+  tipo_servicio_id: z.string().uuid("Debe seleccionar un tipo de servicio."),
   horario_retiro_desde: z.string().regex(timeRegex, "Formato HH:MM inválido.").optional().nullable().default(""),
   horario_entrega_hasta: z.string().regex(timeRegex, "Formato HH:MM inválido.").optional().nullable().default(""),
-  precio: z.preprocess( // Price is still submitted, but will be read-only and eventually calculated
+  precio: z.preprocess(
     (val) => {
       if (val === "" || val === null || val === undefined) return 0;
       const num = parseFloat(String(val));
@@ -246,8 +246,27 @@ export const DosRuedasEnvioFormSchema = z.object({
 });
 export type DosRuedasEnvioFormValues = z.infer<typeof DosRuedasEnvioFormSchema>;
 
+// Type for the calculated shipment summary on DosRuedasPage
+export interface DosRuedasCalculatedShipment {
+  remitenteNombre: string;
+  remitenteDireccion: string;
+  remitenteTelefono: string | null;
+  destinatarioNombre: string;
+  destinatarioTelefono: string;
+  destinatarioDireccion: string;
+  destinatarioLat: number | null;
+  destinatarioLng: number | null;
+  tipoServicioNombre: string;
+  horarioRetiro: string | null;
+  horarioEntrega: string | null;
+  precioCalculado: number;
+  distanciaKm: number | null;
+  detallesAdicionales: string | null;
+  calculationMethod?: string; // To show how price was calculated
+}
+
 export interface EnvioConDetalles extends Envio {
-  clientes?: Pick<Cliente, 'id' | 'nombre' | 'apellido' | 'empresa_id'> | null; // Added empresa_id to client for filtering
+  clientes?: Pick<Cliente, 'id' | 'nombre' | 'apellido' | 'empresa_id'> | null;
   empresas_origen?: Pick<Empresa, 'id' | 'nombre'> | null;
   empresas_destino?: Pick<Empresa, 'id' | 'nombre'> | null;
   tipos_paquete?: Pick<TipoPaquete, 'id' | 'nombre'> | null;
@@ -278,7 +297,7 @@ export interface RepartoConDetalles extends Reparto {
   repartidores?: Pick<Repartidor, 'id' | 'nombre'> | null;
   empresas?: Pick<Empresa, 'id' | 'nombre' | 'latitud' | 'longitud' | 'direccion'> | null;
   paradas_count?: number;
-  paradas_reparto?: ParadaConDetalles[];
+  paradas_reparto?: ParadaConDetalles[]; // Changed from `paradas`
 }
 
 // --- ParadaReparto Schemas ---
@@ -287,7 +306,7 @@ export const ParadaRepartoSchema = z.object({
   reparto_id: z.string().uuid(),
   envio_id: z.string().uuid().nullable().optional(), 
   descripcion_parada: z.string().nullable().optional().default(""), 
-  orden_visita: z.number().int().min(0, "El orden de visita no puede ser negativo.").nullable().optional(), // Allow 0 for origin
+  orden_visita: z.number().int().min(0, "El orden de visita no puede ser negativo.").nullable().optional(),
   estado_parada: EstadoEnvioEnum.default('asignado'),
   hora_estimada_llegada: z.string().regex(timeRegex, "Formato HH:MM inválido.").nullable().optional().default(null),
   hora_real_llegada: z.string().regex(timeRegex, "Formato HH:MM inválido.").nullable().optional().default(null),
