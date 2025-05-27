@@ -6,11 +6,12 @@ import {
     TipoServicioSchema, 
     type TipoServicio, 
     type TipoServicioFormValues,
-    TarifaDistanciaCalculadoraSchema,
+    TarifaDistanciaCalculadoraSchema, // Main schema for full object type
     type TarifaDistanciaCalculadora,
-    type TarifaDistanciaFormValues
+    type TarifaDistanciaFormValues // Type for form values
 } from '@/lib/schemas';
 import { revalidatePath } from 'next/cache';
+import { z } from 'zod';
 
 // Helper to get user_id
 async function getUserId() {
@@ -40,7 +41,6 @@ export async function createTipoServicioAction(
   const dataToInsert = {
     ...validatedFields.data,
     user_id: currentUserId,
-    // Asegurarse que los campos numéricos opcionales sean null si están vacíos
     precio_base: validatedFields.data.precio_base === undefined || validatedFields.data.precio_base === null || isNaN(Number(validatedFields.data.precio_base)) ? null : Number(validatedFields.data.precio_base),
     precio_extra_km_default: validatedFields.data.precio_extra_km_default === undefined || validatedFields.data.precio_extra_km_default === null || isNaN(Number(validatedFields.data.precio_extra_km_default)) ? null : Number(validatedFields.data.precio_extra_km_default),
   };
@@ -133,7 +133,6 @@ export async function updateTipoServicioAction(
 }
 
 export async function deleteTipoServicioAction(id: string): Promise<{ success: boolean; error?: string }> {
-  // First, check if there are associated tarifas
   const { data: tarifas, error: tarifasError } = await supabase
     .from('tarifas_distancia_calculadora')
     .select('id')
@@ -149,7 +148,6 @@ export async function deleteTipoServicioAction(id: string): Promise<{ success: b
     return { success: false, error: "No se puede eliminar: este tipo de servicio tiene tarifas de distancia asociadas. Elimínelas primero." };
   }
   
-  // Then, check if there are associated envios
   const { data: envios, error: enviosError } = await supabase
     .from('envios')
     .select('id')
@@ -164,7 +162,6 @@ export async function deleteTipoServicioAction(id: string): Promise<{ success: b
   if (envios && envios.length > 0) {
     return { success: false, error: "No se puede eliminar: este tipo de servicio está siendo utilizado en envíos." };
   }
-
 
   const { error } = await supabase
     .from('tipos_servicio')
@@ -226,25 +223,48 @@ async function checkOverlap(
     if (!existingTarifas) return false;
 
     for (const tarifa of existingTarifas) {
-        // Check for overlap: (StartA < EndB) and (EndA > StartB)
         if (newMin < tarifa.distancia_max_km && newMax > tarifa.distancia_min_km) {
-            return true; // Overlap detected
+            return true; 
         }
     }
-    return false; // No overlap
+    return false; 
 }
+
+// Schema for validating the input to createTarifaDistanciaAction
+const CreateTarifaActionInputSchema = z.object({
+  tipo_servicio_id: z.string().uuid("Debe seleccionar un tipo de servicio."),
+  distancia_min_km: z.preprocess(
+    (val) => parseFloat(String(val)),
+    z.number().min(0, "La distancia mínima no puede ser negativa.")
+  ),
+  distancia_max_km: z.preprocess(
+    (val) => parseFloat(String(val)),
+    z.number().positive("La distancia máxima debe ser un número positivo.")
+  ),
+  precio_base: z.preprocess(
+    (val) => (val === "" || val === null || val === undefined ? null : parseFloat(String(val))),
+    z.number().min(0, "El precio base no puede ser negativo.").nullable().optional().default(null)
+  ),
+  precio_por_km: z.preprocess(
+    (val) => parseFloat(String(val)),
+    z.number().positive("El precio por km debe ser un número positivo.")
+  ),
+}).superRefine((data, ctx) => {
+  if (data.distancia_min_km >= data.distancia_max_km) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "La distancia mínima debe ser menor que la distancia máxima.",
+      path: ["distancia_max_km"],
+    });
+  }
+});
 
 
 export async function createTarifaDistanciaAction(
   formData: TarifaDistanciaFormValues & { tipo_servicio_id: string } 
 ): Promise<{ success: boolean; data?: TarifaDistanciaCalculadora; error?: string }> {
   
-  const validatedFields = TarifaDistanciaCalculadoraSchema.omit({ 
-    id: true, 
-    created_at: true, 
-    updated_at: true, 
-    user_id: true,
-  }).safeParse(formData);
+  const validatedFields = CreateTarifaActionInputSchema.safeParse(formData);
 
   if (!validatedFields.success) {
     console.error("Validation Errors (createTarifaDistanciaAction):", validatedFields.error.flatten());
@@ -259,11 +279,9 @@ export async function createTarifaDistanciaAction(
   }
 
   const currentUserId = await getUserId();
-  const dataToInsert = {
+  const dataToInsert: Omit<TarifaDistanciaCalculadora, 'id' | 'created_at' | 'updated_at'> = {
     ...validatedFields.data,
     user_id: currentUserId,
-    // Asegurarse que los campos numéricos opcionales sean null si están vacíos
-    precio_base: validatedFields.data.precio_base === undefined || validatedFields.data.precio_base === null || isNaN(Number(validatedFields.data.precio_base)) ? null : Number(validatedFields.data.precio_base),
   };
 
   const { data: newTarifa, error } = await supabase
@@ -284,37 +302,46 @@ export async function createTarifaDistanciaAction(
   return { success: true, data: newTarifa as TarifaDistanciaCalculadora };
 }
 
+// Schema for validating the input to updateTarifaDistanciaAction
+const UpdateTarifaActionInputSchema = CreateTarifaActionInputSchema.extend({
+    id: z.string().uuid(), 
+});
+
+
 export async function updateTarifaDistanciaAction(
-  id: string, // tarifa_id
+  id: string, 
   formData: TarifaDistanciaFormValues & { tipo_servicio_id: string }
 ): Promise<{ success: boolean; data?: TarifaDistanciaCalculadora; error?: string }> {
-  const validatedFields = TarifaDistanciaCalculadoraSchema.omit({ 
-    id: true, 
-    created_at: true, 
-    updated_at: true, 
-    user_id: true,
-  }).safeParse(formData); 
+
+  const dataForValidation = { ...formData, id }; // Include id for validation context if needed by checkOverlap
+  const validatedFields = UpdateTarifaActionInputSchema.safeParse(dataForValidation); 
 
   if (!validatedFields.success) {
     return { success: false, error: validatedFields.error.flatten().fieldErrorsToString() };
   }
 
-  const { tipo_servicio_id, distancia_min_km, distancia_max_km } = validatedFields.data;
+  const { tipo_servicio_id, distancia_min_km, distancia_max_km, ...restOfData } = validatedFields.data;
   
   const hasOverlap = await checkOverlap(tipo_servicio_id, distancia_min_km, distancia_max_km, id);
   if (hasOverlap) {
     return { success: false, error: "El rango de distancia ingresado se solapa con otra tarifa existente para este tipo de servicio." };
   }
   
-  const dataToUpdate = {
-    ...validatedFields.data,
-    precio_base: validatedFields.data.precio_base === undefined || validatedFields.data.precio_base === null || isNaN(Number(validatedFields.data.precio_base)) ? null : Number(validatedFields.data.precio_base),
-    updated_at: new Date().toISOString(),
+  const currentUserId = await getUserId();
+  const dataToUpdate: Omit<TarifaDistanciaCalculadora, 'id' | 'created_at' | 'updated_at' | 'user_id'> & { user_id?: string | null } = {
+    tipo_servicio_id: tipo_servicio_id,
+    distancia_min_km: distancia_min_km,
+    distancia_max_km: distancia_max_km,
+    precio_base: restOfData.precio_base,
+    precio_por_km: restOfData.precio_por_km,
+    user_id: currentUserId,
   };
+  // Supabase update doesn't want the 'id' in the payload object itself for .update()
+  // delete (dataToUpdate as any).id; // This was in error, restOfData already excludes id from UpdateTarifaActionInputSchema
 
   const { data: updatedTarifa, error } = await supabase
     .from('tarifas_distancia_calculadora')
-    .update(dataToUpdate)
+    .update(dataToUpdate) // Pass only the fields to be updated
     .eq('id', id)
     .select()
     .single();
@@ -322,7 +349,7 @@ export async function updateTarifaDistanciaAction(
   if (error) {
     console.error("Error updating tarifa_distancia_calculadora in Supabase:", error);
     if (error.code === '23505') { 
-      return { success: false, error: "Ya existe una tarifa con este rango exacto para este servicio." };
+      return { success: false, error: "Ya existe una tarifa con este rango exacto para este servicio (al actualizar)." };
     }
     return { success: false, error: error.message };
   }
@@ -345,4 +372,6 @@ export async function deleteTarifaDistanciaAction(id: string, tipoServicioId: st
   revalidatePath(`/configuracion/tipos-servicio/${tipoServicioId}/tarifas`);
   return { success: true };
 }
+    
+
     

@@ -475,6 +475,7 @@ export type Database = {
           id: string
           nombre: string
           precio_base: number | null
+          precio_extra_km_default: number | null
           updated_at: string | null
           user_id: string | null
         }
@@ -484,6 +485,7 @@ export type Database = {
           id?: string
           nombre: string
           precio_base?: number | null
+          precio_extra_km_default?: number | null
           updated_at?: string | null
           user_id?: string | null
         }
@@ -493,6 +495,7 @@ export type Database = {
           id?: string
           nombre?: string
           precio_base?: number | null
+          precio_extra_km_default?: number | null
           updated_at?: string | null
           user_id?: string | null
         }
