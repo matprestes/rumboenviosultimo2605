@@ -86,7 +86,6 @@ export function DosRuedasEnvioForm({
 
   const selectedSenderId = form.watch('remitente_cliente_id');
   const selectedTipoServicioId = form.watch('tipo_servicio_id');
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const direccionDestino = form.watch('direccion_destino'); 
 
   React.useEffect(() => {
@@ -124,6 +123,7 @@ export function DosRuedasEnvioForm({
             } else {
               toast({ title: "Cálculo de Precio", description: "No se pudo obtener la distancia de la ruta.", variant: "default" });
               setIsCalculatingPrice(false);
+              form.setValue('precio', 0);
               return;
             }
 
@@ -133,6 +133,7 @@ export function DosRuedasEnvioForm({
             if (tsError || tarifasError || !tipoServicio) {
               toast({ title: "Error de Cálculo", description: "No se pudieron obtener las tarifas del servicio.", variant: "destructive" });
               setIsCalculatingPrice(false);
+              form.setValue('precio', 0);
               return;
             }
 
@@ -140,48 +141,51 @@ export function DosRuedasEnvioForm({
             let specificTariffApplied = false;
             let appliedTariffDescription = "Tarifa general del servicio aplicada.";
 
-            // Prioritize specific distance tariffs, using precio_por_km as the fixed total for that range
             if (tarifas && tarifas.length > 0) {
               const sortedTarifas = [...tarifas].sort((a, b) => a.distancia_min_km - b.distancia_min_km);
               for (const tarifa of sortedTarifas) {
                 if (distanceKm >= tarifa.distancia_min_km && distanceKm <= tarifa.distancia_max_km) {
                   calculatedPrice = tarifa.precio_por_km; // This is the fixed total price for the range
                   specificTariffApplied = true;
-                  appliedTariffDescription = `Tarifa aplicada por rango: ${tarifa.distancia_min_km}km - ${tarifa.distancia_max_km}km.`;
+                  appliedTariffDescription = `Tarifa por rango: ${tarifa.distancia_min_km}km - ${tarifa.distancia_max_km}km. Precio: $${tarifa.precio_por_km.toFixed(2)}`;
                   break;
                 }
               }
             }
             
-            // If no specific tariff matched, use default service price and per-km extra
             if (!specificTariffApplied) {
               calculatedPrice = (tipoServicio.precio_base || 0) + (distanceKm * (tipoServicio.precio_extra_km_default || 0));
               if (tipoServicio.precio_extra_km_default === null || tipoServicio.precio_extra_km_default === undefined) {
-                 appliedTariffDescription = "Aplicado precio base del servicio (sin tarifa por KM adicional).";
+                 appliedTariffDescription = `Aplicado precio base del servicio ($${(tipoServicio.precio_base || 0).toFixed(2)}) (sin tarifa por KM adicional).`;
+              } else {
+                appliedTariffDescription = `Aplicado precio base ($${(tipoServicio.precio_base || 0).toFixed(2)}) + $${(tipoServicio.precio_extra_km_default || 0).toFixed(2)}/km.`;
               }
             }
             
-            form.setValue('precio', parseFloat(calculatedPrice.toFixed(2)));
-            toast({ title: "Precio Estimado Calculado", description: `Distancia: ${distanceKm.toFixed(2)} km. Precio: $${calculatedPrice.toFixed(2)}. ${appliedTariffDescription}`, duration: 6000});
+            const finalPrice = parseFloat(calculatedPrice.toFixed(2));
+            form.setValue('precio', finalPrice);
+            toast({ title: "Precio Estimado", description: `Distancia: ${distanceKm.toFixed(2)} km. ${appliedTariffDescription} Total: $${finalPrice.toFixed(2)}`, duration: 8000});
 
           } else {
             toast({ title: "Error de Distancia", description: `No se pudo calcular la ruta: ${status}`, variant: "destructive" });
+            form.setValue('precio', 0);
           }
           setIsCalculatingPrice(false);
         });
       } catch (error: any) {
         toast({ title: "Error Calculando Precio", description: error.message || "Ocurrió un error.", variant: "destructive" });
+        form.setValue('precio', 0);
         setIsCalculatingPrice(false);
       }
     };
 
-    if (selectedSender && geocodedDest && selectedTipoServicioId && isMapsApiReady) {
+    if (selectedSender && geocodedDest && selectedTipoServicioId && isMapsApiReady && direccionDestino) {
       calculateAndSetPrice();
     } else {
         form.setValue('precio', 0);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSender, geocodedDest, selectedTipoServicioId, isMapsApiReady, googleMaps, form.setValue, toast]);
+  }, [selectedSender, geocodedDest, selectedTipoServicioId, isMapsApiReady, direccionDestino]);
 
 
   const handleGeocodeDest = async () => {
@@ -411,7 +415,7 @@ export function DosRuedasEnvioForm({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Horario inicial de retiro (HH:MM)</FormLabel>
-                    <FormControl><Input placeholder="Ej: 09:00" {...field} value={field.value ?? ""} /></FormControl>
+                    <FormControl><Input type="time" placeholder="Ej: 09:00" {...field} value={field.value ?? ""} /></FormControl>
                     <FormDescription>Desde que hora se puede retirar.</FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -423,7 +427,7 @@ export function DosRuedasEnvioForm({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Horario límite de entrega (HH:MM)</FormLabel>
-                    <FormControl><Input placeholder="Ej: 18:00" {...field} value={field.value ?? ""} /></FormControl>
+                    <FormControl><Input type="time" placeholder="Ej: 18:00" {...field} value={field.value ?? ""} /></FormControl>
                     <FormDescription>Hasta que hora se puede entregar.</FormDescription>
                     <FormMessage />
                   </FormItem>
