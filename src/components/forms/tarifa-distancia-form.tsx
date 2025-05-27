@@ -4,7 +4,8 @@
 import * as React from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { TarifaDistanciaCalculadoraSchema, type TarifaDistanciaFormValues } from '@/lib/schemas';
+import { z } from 'zod'; // Import Zod
+import type { TarifaDistanciaFormValues } from '@/lib/schemas'; // Keep for type
 import { Button } from '@/components/ui/button';
 import {
   Form,
@@ -19,12 +20,41 @@ import { Input } from '@/components/ui/input';
 import { Loader2 } from 'lucide-react';
 
 interface TarifaDistanciaFormProps {
-  onSubmit: (data: TarifaDistanciaFormValues) => Promise<void | { success: boolean; error?: string; data?: any }>;
+  onSubmit: (data: TarifaDistanciaFormValues & { tipo_servicio_id?: string }) => Promise<void | { success: boolean; error?: string; data?: any }>;
   defaultValues?: Partial<TarifaDistanciaFormValues>;
   isSubmitting?: boolean;
   submitButtonText?: string;
-  tipoServicioId?: string; // Needed to associate tarifa with a service
+  tipoServicioId?: string; 
 }
+
+// Define a schema specifically for this form's validation resolver
+const FormSpecificTarifaSchema = z.object({
+  distancia_min_km: z.preprocess(
+    (val) => parseFloat(String(val)),
+    z.number().min(0, "La distancia mínima no puede ser negativa.")
+  ),
+  distancia_max_km: z.preprocess(
+    (val) => parseFloat(String(val)),
+    z.number().positive("La distancia máxima debe ser un número positivo.")
+  ),
+  precio_base: z.preprocess(
+    (val) => (val === "" || val === null || val === undefined ? null : parseFloat(String(val))),
+    z.number().min(0, "El precio base no puede ser negativo.").nullable().optional().default(null)
+  ),
+  precio_por_km: z.preprocess(
+    (val) => parseFloat(String(val)),
+    z.number().positive("El precio por km debe ser un número positivo.")
+  ),
+}).superRefine((data, ctx) => {
+  if (data.distancia_min_km >= data.distancia_max_km) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "La distancia mínima debe ser menor que la distancia máxima.",
+      path: ["distancia_max_km"],
+    });
+  }
+});
+
 
 export function TarifaDistanciaForm({
   onSubmit,
@@ -34,13 +64,7 @@ export function TarifaDistanciaForm({
   tipoServicioId
 }: TarifaDistanciaFormProps) {
   const form = useForm<TarifaDistanciaFormValues>({
-    resolver: zodResolver(TarifaDistanciaCalculadoraSchema.omit({ 
-        id: true, 
-        created_at: true, 
-        updated_at: true, 
-        user_id: true, 
-        tipo_servicio_id: true // Will be passed separately
-    })),
+    resolver: zodResolver(FormSpecificTarifaSchema), // Use the new form-specific schema
     defaultValues: {
       distancia_min_km: defaultValues?.distancia_min_km ?? 0,
       distancia_max_km: defaultValues?.distancia_max_km ?? 0,
@@ -59,13 +83,15 @@ export function TarifaDistanciaForm({
   }, [defaultValues, form]);
 
   const handleFormSubmit = async (data: TarifaDistanciaFormValues) => {
+    // The tipo_servicio_id is passed directly to the onSubmit handler, not part of the form's state or validation for *this* component.
+    // The server action will handle associating it.
     const dataToSubmit = {
       ...data,
-      tipo_servicio_id: tipoServicioId, // Add the parent service ID
+      tipo_servicio_id: tipoServicioId, 
       precio_base: data.precio_base === null || data.precio_base === undefined || isNaN(Number(data.precio_base)) ? null : Number(data.precio_base),
       precio_por_km: Number(data.precio_por_km)
     };
-    await onSubmit(dataToSubmit as TarifaDistanciaFormValues); // Cast because we added tipo_servicio_id
+    await onSubmit(dataToSubmit);
   };
 
   return (
@@ -80,7 +106,8 @@ export function TarifaDistanciaForm({
                 <FormLabel>Distancia Mín. (km)</FormLabel>
                 <FormControl>
                     <Input type="number" step="0.01" placeholder="0.00" {...field} 
-                    onChange={e => field.onChange(parseFloat(e.target.value) || 0)}
+                    onChange={e => field.onChange(e.target.value === '' ? 0 : parseFloat(e.target.value))} // Ensure number or 0
+                    value={field.value ?? 0}
                     />
                 </FormControl>
                 <FormMessage />
@@ -95,7 +122,8 @@ export function TarifaDistanciaForm({
                 <FormLabel>Distancia Máx. (km)</FormLabel>
                 <FormControl>
                     <Input type="number" step="0.01" placeholder="Ej: 5.00" {...field} 
-                    onChange={e => field.onChange(parseFloat(e.target.value) || 0)}
+                    onChange={e => field.onChange(e.target.value === '' ? 0 : parseFloat(e.target.value))} // Ensure number or 0
+                    value={field.value ?? 0}
                     />
                 </FormControl>
                 <FormMessage />
@@ -132,7 +160,8 @@ export function TarifaDistanciaForm({
                 <FormLabel>Precio por KM</FormLabel>
                 <FormControl>
                     <Input type="number" step="0.01" placeholder="Ej: 50.00" {...field} 
-                    onChange={e => field.onChange(parseFloat(e.target.value) || 0)}
+                     onChange={e => field.onChange(e.target.value === '' ? 0 : parseFloat(e.target.value))} // Ensure number or 0
+                     value={field.value ?? 0}
                     />
                 </FormControl>
                 <FormMessage />
@@ -149,5 +178,3 @@ export function TarifaDistanciaForm({
     </Form>
   );
 }
-
-    
