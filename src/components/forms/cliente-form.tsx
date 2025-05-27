@@ -2,6 +2,14 @@
 "use client";
 
 import * as React from 'react';
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+} from '@/components/ui/card';
+
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ClienteSchema, type Cliente, EstadoEnum } from '@/lib/schemas';
