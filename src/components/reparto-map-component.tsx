@@ -4,7 +4,7 @@
 import * as React from 'react';
 import type { ParadaConDetalles, Empresa } from '@/lib/schemas';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, AlertTriangle } from "lucide-react"; // Added AlertTriangle
+import { Loader2, AlertTriangle } from "lucide-react"; 
 import { getGoogleMapsApi } from '@/services/google-maps-service';
 
 interface RepartoMapComponentProps {
@@ -57,15 +57,15 @@ export function RepartoMapComponent({ paradas, empresaOrigen, repartoId }: Repar
       setIsLoadingMap(false);
       setErrorLoadingApi(null);
     }).catch(e => {
-      console.error("Error loading Google Maps API in RepartoMapComponent:", e);
       const errorMessage = (e as Error).message || "No se pudo inicializar Google Maps.";
+      console.warn("RepartoMapComponent: Fallo definitivo al cargar Google Maps API. El mapa no se renderizará. Error:", errorMessage);
       toast({ title: "Error al cargar Mapa", description: errorMessage, variant: "destructive"});
       setErrorLoadingApi(errorMessage);
       setIsLoadingMap(false);
       setGoogleMaps(null);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [repartoId, toast]); 
+  }, [repartoId]); // Removed map and toast from dependencies, API loading should happen once per component instance (tied to repartoId if it could change)
 
   React.useEffect(() => {
     if (!map || !googleMaps?.maps?.SymbolPath || !paradas || errorLoadingApi ) { 
@@ -149,8 +149,6 @@ export function RepartoMapComponent({ paradas, empresaOrigen, repartoId }: Repar
         infoContent += `<p style="margin:0 0 3px 0; font-size: 0.9em;"><strong>Estado:</strong> ${parada.estado_parada || 'N/A'}</p>`;
         markerColor = DELIVERY_COLOR;
       } else if (!parada.envio_id && parada.descripcion_parada) { 
-        // This is for other custom stops, if they had coordinates directly on parada_reparto (not currently implemented)
-        // For now, only fixedPickupStop (via empresaOrigen) or envio_id stops get mapped.
         console.warn("Parada sin envío no se mapea a menos que sea el origen de empresa:", parada.descripcion_parada);
       }
       
@@ -218,7 +216,7 @@ export function RepartoMapComponent({ paradas, empresaOrigen, repartoId }: Repar
     }
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, googleMaps, paradas, empresaOrigen, infoWindow, errorLoadingApi]); 
+  }, [map, googleMaps, paradas, empresaOrigen, errorLoadingApi]); // infoWindow is stable
 
   if (isLoadingMap && API_KEY_COMPONENT) {
     return (
@@ -250,5 +248,3 @@ export function RepartoMapComponent({ paradas, empresaOrigen, repartoId }: Repar
 
   return <div ref={mapRef} className="w-full h-full rounded-md shadow-sm" />;
 }
-
-    

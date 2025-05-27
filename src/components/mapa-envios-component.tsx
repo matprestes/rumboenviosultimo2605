@@ -4,7 +4,7 @@
 import * as React from 'react';
 import type { UnassignedEnvioListItem } from '@/lib/schemas';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, AlertTriangle } from "lucide-react"; // Added AlertTriangle
+import { Loader2, AlertTriangle } from "lucide-react"; 
 import { getGoogleMapsApi } from '@/services/google-maps-service';
 
 interface MapaEnviosComponentProps {
@@ -57,15 +57,15 @@ export function MapaEnviosComponent({
       setIsLoadingMap(false);
       setErrorLoadingApi(null); 
     }).catch(e => {
-      console.error("Error loading Google Maps API in MapaEnviosComponent:", e);
       const errorMessage = (e as Error).message || "No se pudo inicializar Google Maps.";
+      console.warn("MapaEnviosComponent: Fallo definitivo al cargar Google Maps API. El mapa no se renderizará. Error:", errorMessage);
       toast({ title: "Error al cargar Mapa", description: errorMessage, variant: "destructive"});
       setErrorLoadingApi(errorMessage);
       setIsLoadingMap(false);
       setGoogleMaps(null); 
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, toast]); 
+  }, []); // Removed map and toast from dependencies, API loading should happen once.
 
 
   React.useEffect(() => {
@@ -131,7 +131,7 @@ export function MapaEnviosComponent({
     }
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, googleMaps, unassignedEnvios, onUnassignedEnvioSelect, infoWindow, selectedEnvioId, errorLoadingApi]);
+  }, [map, googleMaps, unassignedEnvios, selectedEnvioId, errorLoadingApi]); // infoWindow and onUnassignedEnvioSelect are stable
 
   if (isLoadingMap && API_KEY_COMPONENT) {
     return (
@@ -163,5 +163,3 @@ export function MapaEnviosComponent({
 
   return <div ref={mapRef} className="w-full h-full rounded-md shadow-md" style={{ minHeight: '400px' }} />;
 }
-
-    
