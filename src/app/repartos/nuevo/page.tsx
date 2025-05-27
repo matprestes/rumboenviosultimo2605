@@ -34,7 +34,7 @@ export default function NuevoRepartoPage() {
         const [repartidoresData, empresasData, enviosData] = await Promise.all([
           getRepartidoresForSelectAction(),
           getEmpresasForSelectAction(),
-          getEnviosPendientesAction() // Initial load with no empresa filter
+          getEnviosPendientesAction() 
         ]);
         setRepartidores(repartidoresData);
         setEmpresas(empresasData);
@@ -50,16 +50,17 @@ export default function NuevoRepartoPage() {
   }, [toast]);
 
   const handleCreateReparto = async (formData: RepartoFormValues) => {
-    setIsSubmitting(true);
+    setIsSubmitting(true); // This state is now primarily controlled by the form component
     const result = await createRepartoAction(formData);
-    setIsSubmitting(false); // Handled by form itself now
+    // setIsSubmitting(false); // Form component handles its own internal submitting state for the button
     if (result.success && result.data) {
       toast({ title: "Reparto Creado", description: `El reparto para ${formData.fecha_reparto.toLocaleDateString()} ha sido creado.` });
       router.push('/repartos');
     } else {
       toast({ title: "Error al Crear Reparto", description: result.error || "Ocurrió un error inesperado.", variant: "destructive" });
     }
-    return result; // Return result for form to handle
+    setIsSubmitting(false); // Reset page-level submitting state after action completes
+    return result; 
   };
 
   if (isLoadingData) {
@@ -75,28 +76,29 @@ export default function NuevoRepartoPage() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
             <Button variant="outline" size="icon" asChild>
-                <Link href="/repartos"><ArrowLeft /></Link>
+                <Link href="/repartos"><ArrowLeft className="h-4 w-4" /></Link>
             </Button>
             <h1 className="text-3xl font-bold tracking-tight text-primary flex items-center gap-2">
                 <ClipboardPlus size={32} />
-                Crear Nuevo Reparto
+                Crear Nuevo Reparto Individual
             </h1>
         </div>
       </div>
-      <Card>
-        <CardHeader>
+      <Card className="rounded-2xl shadow-md">
+        <CardHeader className="p-6">
           <CardTitle>Detalles del Nuevo Reparto</CardTitle>
-          <CardDescription>Complete la información para planificar un nuevo reparto.</CardDescription>
+          <CardDescription>Complete la información para planificar un nuevo reparto individual.</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-6">
           <RepartoForm
             onSubmit={handleCreateReparto}
             repartidores={repartidores}
-            empresas={empresas}
+            empresas={empresas} // Pasamos empresas para el filtro, aunque este form es "individual"
             initialEnviosPendientes={enviosPendientes}
             fetchEnviosPendientes={getEnviosPendientesAction}
-            isSubmitting={isSubmitting}
-            setIsSubmitting={setIsSubmitting}
+            isSubmitting={isSubmitting} // Page-level submitting state
+            setIsSubmitting={setIsSubmitting} // To allow form to update page-level state
+            formType="individual"
           />
         </CardContent>
       </Card>

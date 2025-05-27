@@ -51,11 +51,11 @@ export default function NuevaEmpresaPage() {
         </div>
       </div>
       <Card className="rounded-2xl shadow-md">
-        <CardHeader>
+        <CardHeader className="p-6">
           <CardTitle>Detalles de la Nueva Empresa</CardTitle>
           <CardDescription>Complete la información a continuación para registrar una nueva empresa.</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-6">
           <EmpresaForm
             onSubmit={handleCreateEmpresa}
             isSubmitting={isSubmitting}

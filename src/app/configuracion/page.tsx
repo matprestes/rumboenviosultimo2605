@@ -18,23 +18,23 @@ export default function ConfiguracionPage() {
       </header>
       
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        <Card className="rounded-2xl shadow-sm">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><DollarSignIcon size={20} /> Tarifas Generales</CardTitle>
+        <Card className="rounded-2xl shadow-md">
+          <CardHeader className="p-6">
+            <CardTitle className="flex items-center gap-2 text-xl"><DollarSignIcon size={20} className="text-primary" /> Tarifas Generales</CardTitle>
+             <CardDescription className="text-sm">Gestión de tipos de servicio y sus tarifas por distancia.</CardDescription>
           </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground mb-3">Gestión de tipos de servicio y sus tarifas por distancia.</p>
+          <CardContent className="p-6 pt-0">
              <Button asChild className="w-full" variant="outline">
-              <Link href="/configuracion/tipos-servicio">Gestionar Tipos de Servicio y Tarifas</Link>
+              <Link href="/configuracion/tipos-servicio">Gestionar Servicios y Tarifas</Link>
             </Button>
           </CardContent>
         </Card>
-        <Card className="rounded-2xl shadow-sm">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Box size={20} /> Tipos de Paquete</CardTitle>
+        <Card className="rounded-2xl shadow-md">
+          <CardHeader className="p-6">
+            <CardTitle className="flex items-center gap-2 text-xl"><Box size={20} className="text-primary"/> Tipos de Paquete</CardTitle>
+            <CardDescription className="text-sm">Define los tamaños y categorías de paquetes.</CardDescription>
           </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground mb-3">CRUD de tipos de paquete.</p>
+          <CardContent className="p-6 pt-0">
              <Button asChild className="w-full" variant="outline">
               <Link href="/configuracion/tipos-paquete">Gestionar Tipos de Paquete</Link>
             </Button>
@@ -44,5 +44,3 @@ export default function ConfiguracionPage() {
     </div>
   );
 }
-
-    

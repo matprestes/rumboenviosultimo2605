@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ClienteForm } from '@/components/forms/cliente-form';
-import type { ClienteFormValues, Empresa } from '@/lib/schemas';
+import type { ClienteFormValues } from '@/lib/schemas'; // Empresa type is not needed here
 import { useToast } from '@/hooks/use-toast';
 import { createClienteAction } from '@/actions/cliente-actions';
 import { getEmpresasForSelect } from '@/actions/envio-actions'; // Reusing this action
@@ -79,11 +79,11 @@ export default function NuevoClientePage() {
         </div>
       </div>
       <Card className="rounded-2xl shadow-md">
-        <CardHeader>
+        <CardHeader className="p-6">
           <CardTitle>Detalles del Nuevo Cliente</CardTitle>
           <CardDescription>Complete la información a continuación para registrar un nuevo cliente.</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-6">
           {isLoadingEmpresas ? (
             <div className="flex justify-center items-center h-40">
               <Loader2 className="h-8 w-8 animate-spin text-primary" /> 

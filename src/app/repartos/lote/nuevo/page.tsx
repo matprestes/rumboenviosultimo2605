@@ -4,13 +4,13 @@
 import * as React from 'react';
 import { RepartoLoteForm } from '@/components/forms/reparto-lote-form';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Layers, ArrowLeft, Loader2 } from 'lucide-react'; // Layers icon for batch
+import { Layers, ArrowLeft, Loader2 } from 'lucide-react'; 
 import { 
     createRepartoLoteAction, 
     getRepartidoresForSelectAction, 
     getEmpresasForSelectAction,
 } from '@/actions/reparto-actions';
-import { getTiposServicioForSelect } from '@/actions/envio-actions'; // For individual assignment
+import { getTiposServicioForSelect } from '@/actions/envio-actions'; 
 import type { Repartidor, Empresa, RepartoLoteFormValues, TipoServicio } from '@/lib/schemas';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
@@ -50,20 +50,19 @@ export default function NuevoRepartoLotePage() {
   }, [toast]);
 
   const handleCreateRepartoLote = async (formData: RepartoLoteFormValues) => {
-    // setIsSubmitting is handled by the form component now
+    setIsSubmitting(true);
     const result = await createRepartoLoteAction(formData);
+    setIsSubmitting(false); 
     if (result.success && result.data) {
-      toast({ title: "Reparto por Lote Creado", description: `El reparto para ${formData.empresa_id} en fecha ${formData.fecha_reparto.toLocaleDateString()} ha sido creado.` });
+      toast({ title: "Reparto por Lote Creado", description: `El reparto para la empresa en fecha ${formData.fecha_reparto.toLocaleDateString()} ha sido creado.` });
       router.push('/repartos');
     } else {
       toast({ title: "Error al Crear Reparto por Lote", description: result.error || "Ocurrió un error inesperado.", variant: "destructive" });
       if (result.errors) {
-        // Optionally iterate through result.errors.fieldErrors for more specific messages
-        // For now, the general error message from result.error is shown.
         console.error("Validation errors passed to page:", result.errors);
       }
     }
-    return result; // Return result for form to handle
+    return result; 
   };
 
   if (isLoadingData) {
@@ -79,27 +78,27 @@ export default function NuevoRepartoLotePage() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
             <Button variant="outline" size="icon" asChild>
-                <Link href="/repartos"><ArrowLeft /></Link>
+                <Link href="/repartos"><ArrowLeft className="h-4 w-4" /></Link>
             </Button>
             <h1 className="text-3xl font-bold tracking-tight text-primary flex items-center gap-2">
                 <Layers size={32} />
-                Nuevo Reparto por Lote (Viaje por Empresa)
+                Nuevo Reparto por Lote
             </h1>
         </div>
       </div>
-      <Card>
-        <CardHeader>
+      <Card className="rounded-2xl shadow-md">
+        <CardHeader className="p-6">
           <CardTitle>Planificar Viaje por Empresa</CardTitle>
           <CardDescription>Seleccione una empresa y configure los envíos para sus clientes.</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-6">
           <RepartoLoteForm
             onSubmit={handleCreateRepartoLote}
             empresas={empresas}
             repartidores={repartidores}
             tiposServicio={tiposServicio}
-            isSubmitting={isSubmitting}
-            setIsSubmitting={setIsSubmitting}
+            isSubmitting={isSubmitting} // Pass page-level submitting state
+            setIsSubmitting={setIsSubmitting} // Allow form to control page-level submitting state
           />
         </CardContent>
       </Card>
