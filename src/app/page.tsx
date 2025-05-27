@@ -1,7 +1,8 @@
+
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { PackagePlus, Users, Truck, Building, Route, FilePlus, ClipboardList, Layers, Sparkles } from "lucide-react";
+import { PackagePlus, Users, Truck, Building, Route, FilePlus, ClipboardList, Layers, Sparkles, Settings } from "lucide-react"; // Added Settings
 import { Badge } from "@/components/ui/badge";
 
 export default function DashboardPage() {
@@ -21,29 +22,29 @@ export default function DashboardPage() {
         <h2 className="text-2xl font-semibold tracking-tight text-foreground mb-6 text-center sm:text-left">Accesos Rápidos</h2>
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {/* Tarjeta Nuevo Envío */}
-          <Card className="shadow-md hover:shadow-xl transition-shadow flex flex-col bg-background rounded-2xl border-primary/40">
+          <Card className="shadow-md hover:shadow-xl transition-shadow flex flex-col bg-muted rounded-2xl border-primary/40">
             <CardHeader className="pb-4">
-              <div className="flex items-center gap-4">
-                <PackagePlus className="h-12 w-12 text-primary" strokeWidth={2} />
+              <div className="flex items-start gap-4">
+                <PackagePlus className="h-10 w-10 text-primary flex-shrink-0 mt-1" strokeWidth={2.25} />
                 <div>
                   <CardTitle className="text-xl font-semibold text-primary">Nuevo Envío</CardTitle>
                   <CardDescription className="text-sm mt-1">
-                    Registra envíos individuales o por lote.
+                    Registra envíos individuales o pedidos rápidos.
                   </CardDescription>
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="flex-grow flex flex-col justify-between space-y-4">
+            <CardContent className="flex-grow flex flex-col justify-between space-y-3">
               <ul className="space-y-1.5 text-xs text-muted-foreground list-disc list-inside pl-1">
                 <li>Origen y destino con geolocalización.</li>
                 <li>Selección de tipo de servicio y paquete.</li>
-                <li>Cálculo de precio automático.</li>
+                <li>Previsualizar precio sugerido.</li>
               </ul>
               <div className="space-y-2 pt-2">
                 <Button asChild className="w-full bg-primary hover:bg-primary/90 text-primary-foreground">
-                  <Link href="/envios/nuevo">Crear Envío Individual</Link>
+                  <Link href="/envios/nuevo">Crear Envío Detallado</Link>
                 </Button>
-                 <Button asChild variant="outline" className="w-full border-primary/50 text-primary hover:bg-primary/10">
+                 <Button asChild variant="outline" className="w-full border-primary/50 text-primary hover:bg-primary/10 hover:text-primary">
                   <Link href="/dos-ruedas">Pedido Rápido (DosRuedas)</Link>
                 </Button>
               </div>
@@ -51,10 +52,10 @@ export default function DashboardPage() {
           </Card>
 
           {/* Tarjeta Gestionar Clientes y Empresas */}
-          <Card className="shadow-md hover:shadow-xl transition-shadow flex flex-col bg-background rounded-2xl border-border">
+          <Card className="shadow-md hover:shadow-xl transition-shadow flex flex-col bg-card rounded-2xl border-border">
             <CardHeader className="pb-4">
-              <div className="flex items-center gap-4">
-                <Users className="h-12 w-12 text-accent" strokeWidth={2} />
+              <div className="flex items-start gap-4">
+                <Users className="h-10 w-10 text-accent flex-shrink-0 mt-1" strokeWidth={2.25} />
                 <div>
                   <CardTitle className="text-xl font-semibold text-accent">Clientes y Empresas</CardTitle>
                   <CardDescription className="text-sm mt-1">
@@ -63,17 +64,17 @@ export default function DashboardPage() {
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="flex-grow flex flex-col justify-between space-y-4">
+            <CardContent className="flex-grow flex flex-col justify-between space-y-3">
               <div className="space-y-1.5 text-xs">
                 <Badge variant="secondary">Clientes activos: N/A</Badge>
                 <Badge variant="secondary" className="ml-1">Empresas: N/A</Badge>
-                <p className="text-muted-foreground italic mt-1">(Contadores dinámicos próximamente)</p>
+                <p className="text-muted-foreground italic mt-1 text-xs">(Contadores dinámicos próximamente)</p>
               </div>
               <div className="space-y-2 pt-2">
                 <Button asChild className="w-full bg-accent hover:bg-accent/90 text-accent-foreground">
                   <Link href="/clientes">Gestionar Clientes</Link>
                 </Button>
-                <Button asChild variant="outline" className="w-full border-accent/50 text-accent hover:bg-accent/10">
+                <Button asChild variant="outline" className="w-full border-accent/50 text-accent hover:bg-accent/10 hover:text-accent">
                   <Link href="/empresas">Gestionar Empresas</Link>
                 </Button>
               </div>
@@ -81,10 +82,10 @@ export default function DashboardPage() {
           </Card>
 
           {/* Tarjeta Asignar Repartos */}
-          <Card className="shadow-md hover:shadow-xl transition-shadow flex flex-col bg-background rounded-2xl border-border">
+          <Card className="shadow-md hover:shadow-xl transition-shadow flex flex-col bg-card rounded-2xl border-border">
             <CardHeader className="pb-4">
-               <div className="flex items-center gap-4">
-                <Truck className="h-12 w-12 text-green-600" strokeWidth={2} />
+               <div className="flex items-start gap-4">
+                <Truck className="h-10 w-10 text-green-600 flex-shrink-0 mt-1" strokeWidth={2.25} />
                  <div>
                   <CardTitle className="text-xl font-semibold text-green-700 dark:text-green-500">Repartos y Rutas</CardTitle>
                   <CardDescription className="text-sm mt-1">
@@ -93,9 +94,9 @@ export default function DashboardPage() {
                  </div>
               </div>
             </CardHeader>
-            <CardContent className="flex-grow flex flex-col justify-between space-y-4">
+            <CardContent className="flex-grow flex flex-col justify-between space-y-3">
                 <div className="space-y-1.5">
-                  <Badge variant="default" className="bg-green-500 hover:bg-green-600 text-white">Activos hoy: N/A</Badge>
+                  <Badge variant="default" className="bg-green-500 hover:bg-green-600 text-white text-xs">Activos hoy: N/A</Badge>
                   <ul className="space-y-1.5 text-xs text-muted-foreground list-disc list-inside pl-1">
                     <li>Crear repartos individuales o por lote.</li>
                     <li>Visualizar y optimizar rutas en mapa.</li>
@@ -106,7 +107,7 @@ export default function DashboardPage() {
                 <Button asChild className="w-full bg-green-600 hover:bg-green-700 text-white">
                   <Link href="/repartos">Gestionar Repartos</Link>
                 </Button>
-                 <Button asChild variant="outline" className="w-full border-green-600/50 text-green-700 dark:text-green-500 hover:bg-green-600/10">
+                 <Button asChild variant="outline" className="w-full border-green-600/50 text-green-700 dark:text-green-500 hover:bg-green-600/10 hover:text-green-700">
                   <Link href="/repartos/nuevo">Nuevo Reparto</Link>
                 </Button>
               </div>
