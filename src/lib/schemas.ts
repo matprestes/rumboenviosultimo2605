@@ -103,7 +103,7 @@ export const TipoServicioSchema = z.object({
     (val) => (val === "" || val === null || val === undefined ? null : parseFloat(String(val))),
     z.number().min(0, "El precio base no puede ser negativo.").nullable().optional().default(null)
   ),
-  precio_extra_km_default: z.preprocess( // NUEVO CAMPO
+  precio_extra_km_default: z.preprocess(
     (val) => (val === "" || val === null || val === undefined ? null : parseFloat(String(val))),
     z.number().min(0, "El precio extra por KM no puede ser negativo.").nullable().optional().default(null)
   ),
@@ -191,8 +191,8 @@ export const EnvioBaseSchema = z.object({
   ),
   estado: EstadoEnvioEnum.default('pendiente_asignacion'),
   fecha_estimada_entrega: z.date().nullable().optional(),
-  horario_retiro_desde: z.string().regex(timeRegex, "Formato HH:MM inválido.").nullable().optional().default(null),
-  horario_entrega_hasta: z.string().regex(timeRegex, "Formato HH:MM inválido.").nullable().optional().default(null),
+  horario_retiro_desde: z.string().regex(timeRegex, "Formato HH:MM inválido para retiro.").nullable().optional().default(null),
+  horario_entrega_hasta: z.string().regex(timeRegex, "Formato HH:MM inválido para entrega.").nullable().optional().default(null),
   repartidor_asignado_id: z.string().uuid().nullable().optional(),
   notas_conductor: z.string().nullable().optional().default(""),
   detalles_adicionales: z.string().nullable().optional().default(""),
@@ -275,8 +275,9 @@ export type RepartoFormValues = Omit<Reparto, 'id' | 'created_at' | 'updated_at'
 
 export interface RepartoConDetalles extends Reparto {
   repartidores?: Pick<Repartidor, 'id' | 'nombre'> | null;
-  empresas?: Pick<Empresa, 'id' | 'nombre' | 'latitud' | 'longitud' | 'direccion'> | null;
+  empresas?: Pick<Empresa, 'id' | 'nombre' | 'latitud' | 'longitud' | 'direccion'> | null; // Expanded for map origin
   paradas_count?: number;
+  paradas_reparto?: ParadaConDetalles[]; // For detail page, now paradas is renamed to paradas_reparto in join
 }
 
 // --- ParadaReparto Schemas ---
@@ -361,10 +362,8 @@ export type UnassignedEnvioListItem = Pick<Envio, 'id' | 'direccion_origen' | 'l
 
 export type ActiveRepartoListItem = Pick<Reparto, 'id' | 'fecha_reparto' | 'estado' | 'empresa_asociada_id'> & {
   repartidores?: Pick<Repartidor, 'nombre'> | null;
-  empresas?: Pick<Empresa, 'nombre' | 'latitud' | 'longitud'> | null;
+  empresas?: Pick<Empresa, 'nombre' | 'latitud' | 'longitud'> | null; // Note: 'direccion' was missing for 'empresaOrigen' in map
   paradas: Array<Pick<ParadaReparto, 'orden_visita'> & {
     envios?: Pick<Envio, 'latitud_destino' | 'longitud_destino' | 'direccion_destino'> | null;
   }>;
 };
-
-    
