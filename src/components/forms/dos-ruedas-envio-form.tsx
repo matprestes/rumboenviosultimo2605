@@ -30,23 +30,29 @@ import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { getTarifasByTipoServicioAction, getTipoServicioByIdAction } from '@/actions/tipos-servicio.actions';
 
+export interface DosRuedasEnvioFormRef {
+  triggerSubmit: () => void;
+}
+
 interface DosRuedasEnvioFormProps {
   onSubmit: (data: DosRuedasEnvioFormValues) => Promise<{ success: boolean; error?: string; data?: any }>;
   clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido' | 'direccion' | 'telefono' | 'latitud' | 'longitud'>[];
   tiposServicio: TipoServicio[];
-  isSubmitting: boolean;
-  setIsSubmitting: (isSubmitting: boolean) => void;
-  onShipmentCalculated: (data: DosRuedasCalculatedShipment | null) => void; // New prop
+  isSubmitting: boolean; // Still needed for internal loading states like geocoding/price calculation
+  setIsSubmitting: (isSubmitting: boolean) => void; // For final submission, controlled by page
+  onShipmentCalculated: (data: DosRuedasCalculatedShipment | null) => void;
 }
 
-export function DosRuedasEnvioForm({
+export const DosRuedasEnvioForm = React.forwardRef<DosRuedasEnvioFormRef, DosRuedasEnvioFormProps>(({
   onSubmit,
   clientes,
   tiposServicio,
-  isSubmitting,
-  setIsSubmitting,
-  onShipmentCalculated, // New prop
-}: DosRuedasEnvioFormProps) {
+  isSubmitting, // This prop name might be confusing now, let's rename or clarify its use.
+                // Let's assume page will pass its own isSubmitting for the *final* submission.
+                // This component might have its own internal loading states for geocoding/price calculation.
+  setIsSubmitting, // This will be called by the page now.
+  onShipmentCalculated,
+}, ref) => {
   const { toast } = useToast();
   const [googleMaps, setGoogleMaps] = React.useState<typeof google | null>(null);
   const [isMapsApiReady, setIsMapsApiReady] = React.useState(false);
@@ -71,6 +77,12 @@ export function DosRuedasEnvioForm({
     },
   });
   
+  React.useImperativeHandle(ref, () => ({
+    triggerSubmit: () => {
+      form.handleSubmit(onSubmit)();
+    }
+  }));
+
   React.useEffect(() => {
     getGoogleMapsApi()
       .then((api) => {
@@ -96,9 +108,8 @@ export function DosRuedasEnvioForm({
     setSelectedSender(cliente || null);
     form.setValue('precio', 0);
     setCalculatedDistance(null);
-    onShipmentCalculated(null); // Clear summary when sender changes
+    onShipmentCalculated(null); 
   }, [selectedSenderId, clientes, form, onShipmentCalculated]);
-
 
   const calculateAndSetPrice = React.useCallback(async () => {
     if (!isMapsApiReady || !googleMaps || !selectedSender || !selectedSender.latitud || !selectedSender.longitud || !geocodedDest || !geocodedDest.lat || !geocodedDest.lng || !selectedTipoServicioId) {
@@ -114,7 +125,7 @@ export function DosRuedasEnvioForm({
     onShipmentCalculated(null);
 
     let distanceKm = 0;
-    let calculationMethod = "No se pudo calcular.";
+    let calculationMethod = "Cálculo de precio estándar.";
 
     try {
       const directionsService = new googleMaps.maps.DirectionsService();
@@ -122,7 +133,7 @@ export function DosRuedasEnvioForm({
         origin: { lat: selectedSender.latitud, lng: selectedSender.longitud },
         destination: { lat: geocodedDest.lat, lng: geocodedDest.lng },
         travelMode: googleMaps.maps.TravelMode.DRIVING,
-        region: 'AR', // Bias towards Argentina
+        region: 'AR',
       };
 
       const directionsResult = await new Promise<google.maps.DirectionsResult | null>((resolve, reject) => {
@@ -152,7 +163,8 @@ export function DosRuedasEnvioForm({
       const { tarifas, error: tarifasError } = await getTarifasByTipoServicioAction(selectedTipoServicioId);
 
       if (tsError || tarifasError || !tipoServicio) {
-        throw new Error("No se pudieron obtener las tarifas del servicio.");
+        console.error("Error fetching service/tariffs:", {tsError, tarifasError, tipoServicio});
+        throw new Error("No se pudieron obtener las tarifas del servicio seleccionado.");
       }
 
       let calculatedPrice = 0;
@@ -161,43 +173,39 @@ export function DosRuedasEnvioForm({
       if (tarifas && tarifas.length > 0) {
         const sortedTarifas = [...tarifas].sort((a, b) => a.distancia_min_km - b.distancia_min_km);
         
-        // Check specific ranges
         for (const tarifa of sortedTarifas) {
           if (distanceKm >= tarifa.distancia_min_km && distanceKm <= tarifa.distancia_max_km) {
             calculatedPrice = tarifa.precio_por_km; // This is the fixed total price for the range
             specificTariffApplied = true;
-            calculationMethod = `Tarifa por rango (${tarifa.distancia_min_km}km - ${tarifa.distancia_max_km}km) aplicada.`;
+            calculationMethod = `Tarifa por rango (${tarifa.distancia_min_km}km - ${tarifa.distancia_max_km}km) aplicada. Precio total: $${calculatedPrice.toFixed(2)}.`;
             break;
           }
         }
 
-        // Check if exceeding highest defined range
         if (!specificTariffApplied && sortedTarifas.length > 0) {
           const tarifaMasAlta = sortedTarifas[sortedTarifas.length - 1];
           if (distanceKm > tarifaMasAlta.distancia_max_km) {
             if (tipoServicio.precio_base && tipoServicio.precio_base > 0) {
               const distanciaExcedente = distanceKm - tarifaMasAlta.distancia_max_km;
               calculatedPrice = tarifaMasAlta.precio_por_km + (distanciaExcedente * tipoServicio.precio_base);
-              specificTariffApplied = true; // Technically it's an extension of a specific tariff
-              calculationMethod = `Tarifa rango alto ($${tarifaMasAlta.precio_por_km.toFixed(2)}) + excedente ($${tipoServicio.precio_base.toFixed(2)}/km).`;
-            } else {
-              calculatedPrice = tarifaMasAlta.precio_por_km; // No extra cost for exceeding if no service base price
               specificTariffApplied = true;
-              calculationMethod = `Tarifa rango alto ($${tarifaMasAlta.precio_por_km.toFixed(2)}) aplicada (sin costo por km excedente).`;
-              toast({ title: "Advertencia de Precio", description: "El servicio no tiene precio base configurado para calcular costo por km excedente. Se aplicó la tarifa del rango más alto.", variant: "default", duration: 7000 });
+              calculationMethod = `Tarifa rango alto ($${tarifaMasAlta.precio_por_km.toFixed(2)}) + $${tipoServicio.precio_base.toFixed(2)}/km por excedente (${distanciaExcedente.toFixed(2)}km).`;
+            } else {
+              calculatedPrice = tarifaMasAlta.precio_por_km;
+              specificTariffApplied = true;
+              calculationMethod = `Tarifa rango alto ($${tarifaMasAlta.precio_por_km.toFixed(2)}) aplicada. Nota: El servicio no tiene configurado un precio_base para calcular costo por km excedente.`;
+              toast({ title: "Advertencia de Precio", description: "Se aplicó la tarifa del rango más alto. El servicio no tiene 'precio base' para calcular costo por km excedente.", variant: "default", duration: 8000 });
             }
           }
         }
       }
       
-      // Fallback to general service rates
       if (!specificTariffApplied) {
         calculatedPrice = (tipoServicio.precio_base || 0) + (distanceKm * (tipoServicio.precio_extra_km_default || 0));
-        if (tipoServicio.precio_extra_km_default === null || tipoServicio.precio_extra_km_default === undefined || tipoServicio.precio_extra_km_default === 0) {
-            calculationMethod = `Precio base del servicio ($${(tipoServicio.precio_base || 0).toFixed(2)}) aplicado (sin tarifa por KM adicional).`;
-        } else {
-            calculationMethod = `Precio base ($${(tipoServicio.precio_base || 0).toFixed(2)}) + $${(tipoServicio.precio_extra_km_default || 0).toFixed(2)}/km aplicado.`;
-        }
+        calculationMethod = `Tarifa general del servicio: Base $${(tipoServicio.precio_base || 0).toFixed(2)} + $${(tipoServicio.precio_extra_km_default || 0).toFixed(2)}/km.`;
+         if (tipoServicio.precio_extra_km_default === null || tipoServicio.precio_extra_km_default === 0) {
+             calculationMethod = `Aplicado precio base del servicio: $${(tipoServicio.precio_base || 0).toFixed(2)}. (Sin tarifa por KM adicional configurada para fallback).`;
+         }
       }
       
       const finalPrice = parseFloat(calculatedPrice.toFixed(2));
@@ -208,7 +216,7 @@ export function DosRuedasEnvioForm({
       onShipmentCalculated({
         remitenteNombre: `${selectedSender.nombre} ${selectedSender.apellido}`,
         remitenteDireccion: selectedSender.direccion,
-        remitenteTelefono: selectedSender.telefono,
+        remitenteTelefono: selectedSender.telefono || 'N/A',
         destinatarioNombre: formDataValues.nombre_destinatario,
         destinatarioTelefono: formDataValues.telefono_destinatario,
         destinatarioDireccion: geocodedDest.formattedAddress,
@@ -244,8 +252,10 @@ export function DosRuedasEnvioForm({
   ]);
 
   React.useEffect(() => {
-    calculateAndSetPrice();
-  }, [calculateAndSetPrice]);
+    if (geocodedDest) { // Only calculate if destination is geocoded
+        calculateAndSetPrice();
+    }
+  }, [geocodedDest, selectedSenderId, selectedTipoServicioId, calculateAndSetPrice]); // Re-calculate if any of these change
 
 
   const handleGeocodeDest = async () => {
@@ -262,7 +272,7 @@ export function DosRuedasEnvioForm({
     setGeocodedDest(null); 
     form.setValue('precio', 0); 
     setCalculatedDistance(null);
-    onShipmentCalculated(null); // Clear summary during geocoding
+    onShipmentCalculated(null); 
 
     try {
       const result = await geocodeAddress(addressValue);
@@ -270,7 +280,6 @@ export function DosRuedasEnvioForm({
         form.setValue("direccion_destino", result.formattedAddress, { shouldValidate: true });
         setGeocodedDest(result); 
         toast({ title: "Geocodificación Exitosa", description: `Dirección de entrega verificada: ${result.formattedAddress}` });
-        // Price calculation will be triggered by useEffect watching geocodedDest
       } else {
         toast({ title: "Error de Geocodificación", description: "No se pudo encontrar la dirección de entrega o está fuera de Mar del Plata.", variant: "destructive" });
       }
@@ -281,49 +290,9 @@ export function DosRuedasEnvioForm({
     }
   };
 
-  const processSubmit = async (formDataValues: DosRuedasEnvioFormValues) => {
-    if (!selectedSender || !selectedSender.id) {
-        toast({title: "Error de Remitente", description: "Por favor, seleccione un remitente.", variant: "destructive"});
-        return;
-    }
-    if (!selectedSender.latitud || !selectedSender.longitud) {
-      toast({title: "Error de Remitente", description: "El cliente remitente no tiene coordenadas. Por favor, actualice los datos del cliente.", variant: "destructive"});
-      return;
-    }
-     if (!geocodedDest || !geocodedDest.lat || !geocodedDest.lng) {
-      toast({title: "Error de Destinatario", description: "La dirección de destino no ha sido geocodificada. Por favor, verifíquela.", variant: "destructive"});
-      return;
-    }
-    if (isCalculatingPrice) {
-      toast({title: "Calculando Precio", description: "Por favor espere a que termine el cálculo de precio antes de enviar.", variant: "default"});
-      return;
-    }
-
-    setIsSubmitting(true);
-    const result = await onSubmit(formDataValues); 
-    setIsSubmitting(false);
-     if (result.success) {
-      form.reset({ 
-        remitente_cliente_id: '',
-        nombre_destinatario: '',
-        telefono_destinatario: '',
-        direccion_destino: '',
-        tipo_servicio_id: tiposServicio.length > 0 ? tiposServicio[0].id : '',
-        horario_retiro_desde: "",
-        horario_entrega_hasta: "",
-        precio: 0,
-        detalles_adicionales: "",
-      });
-      setSelectedSender(null);
-      setGeocodedDest(null);
-      setCalculatedDistance(null);
-      onShipmentCalculated(null); // Clear summary on successful submission
-    }
-  };
-
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(processSubmit)} className="space-y-6">
+      <form className="space-y-6"> {/* Removed onSubmit from here, will be triggered via ref */}
         <Card className="shadow-sm rounded-lg">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg"><User className="text-primary" /> Información de Quién Envía</CardTitle>
@@ -419,6 +388,7 @@ export function DosRuedasEnvioForm({
                   <FormLabel>Dirección de entrega*</FormLabel>
                   <div className="flex items-center gap-2">
                     <FormControl className="flex-grow"><Input 
+                        type="text"
                         placeholder="Ej: 11 de Septiembre 3687, Mar del Plata" 
                         {...field} 
                         value={field.value ?? ""}
@@ -458,7 +428,7 @@ export function DosRuedasEnvioForm({
                         field.onChange(value);
                         form.setValue('precio', 0); 
                         setCalculatedDistance(null);
-                        onShipmentCalculated(null);
+                        onShipmentCalculated(null); 
                     }} 
                     value={field.value} 
                     defaultValue={field.value}
@@ -539,17 +509,10 @@ export function DosRuedasEnvioForm({
           </CardContent>
         </Card>
 
-        <Button 
-          type="submit" 
-          className="w-full bg-teal-500 hover:bg-teal-600 text-white" 
-          disabled={isSubmitting || isGeocodingDest || !isMapsApiReady || isCalculatingPrice}
-        >
-          {(isSubmitting || isGeocodingDest || isCalculatingPrice) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          Hacer pedido
-        </Button>
+        {/* Submit button removed from here */}
       </form>
     </Form>
   );
-}
+});
 
-    
+DosRuedasEnvioForm.displayName = "DosRuedasEnvioForm";
