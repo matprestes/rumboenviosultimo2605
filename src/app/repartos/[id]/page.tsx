@@ -7,19 +7,20 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ArrowLeft, Edit, Loader2, Package, Truck, User, MapPin, ClipboardEdit, CheckCircle, XCircle, Play, PowerOff, RefreshCw, Route } from "lucide-react";
+import { ArrowLeft, Building, CalendarIcon as IconCalendar, CheckCircle, ClipboardEdit, Edit, Info, Loader2, MapPin, Package, Play, PowerOff, RefreshCw, Route, Truck, User, XCircle } from "lucide-react";
 import { getRepartoByIdAction, updateRepartoEstadoAction, updateParadaEstadoAction, reorderParadasAction } from '@/actions/reparto-actions';
 import type { RepartoConDetalles, ParadaConDetalles, EstadoReparto, EstadoEnvio, EnvioConDetalles, Empresa } from '@/lib/schemas'; // Added ParadaConDetalles
 import { EstadoRepartoEnum, EstadoEnvioEnum } from '@/lib/schemas';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
-import { format } from 'date-fns'; // Removed parseISO as not directly used here
+import { format, isValid } from 'date-fns'; // Removed parseISO as not directly used here, Added isValid
 import { es } from 'date-fns/locale';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { RepartoMapComponent } from '@/components/reparto-map-component'; // Import the new map component
 import { Separator } from '@/components/ui/separator';
+import { cn } from '@/lib/utils';
 
 interface RepartoDetallePageProps {
   params: { id: string };
@@ -175,7 +176,7 @@ export default function RepartoDetallePage({ params }: RepartoDetallePageProps) 
                     <div>
                     <CardTitle>ID Reparto: {reparto.id?.substring(0, 8)}...</CardTitle>
                     <CardDescription>
-                        Fecha: {reparto.fecha_reparto ? format(new Date(reparto.fecha_reparto + "T00:00:00"), "PPP", { locale: es }) : 'N/A'} {/* Ensure date is parsed as local */}
+                        Fecha: {reparto.fecha_reparto && isValid(new Date(reparto.fecha_reparto)) ? format(new Date(reparto.fecha_reparto), "PPP", { locale: es }) : 'N/A'}
                     </CardDescription>
                     </div>
                     <Badge variant="default" className={cn("text-sm", getEstadoBadgeVariant(reparto.estado))}>
@@ -316,3 +317,5 @@ export default function RepartoDetallePage({ params }: RepartoDetallePageProps) 
     </div>
   );
 }
+
+    
