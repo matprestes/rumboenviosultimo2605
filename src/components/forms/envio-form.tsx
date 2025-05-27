@@ -33,6 +33,13 @@ import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 // Removed import for Separator as it's not used.
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+} from '@/components/ui/card';
 
 interface EnvioFormProps {
   onSubmit: (data: Envio) => Promise<{ success: boolean; error?: string; data?: Envio }>;
@@ -73,7 +80,7 @@ export function EnvioForm({
   const form = useForm<Envio>({
     resolver: zodResolver(EnvioSchema),
     defaultValues: initialDefaultValues
-    ? { // Edit mode
+      ? { // Edit mode
         ...initialDefaultValues,
         remitente_cliente_id: initialDefaultValues.remitente_cliente_id ?? null,
         cliente_temporal_nombre: initialDefaultValues.cliente_temporal_nombre ?? "",
@@ -102,7 +109,7 @@ export function EnvioForm({
         latitud_destino: initialDefaultValues.latitud_destino ?? null,
         longitud_destino: initialDefaultValues.longitud_destino ?? null,
       }
-    : { // Create mode
+      : { // Create mode
         remitente_cliente_id: null,
         cliente_temporal_nombre: "",
         cliente_temporal_telefono: "",
@@ -149,7 +156,7 @@ export function EnvioForm({
     if (initialDefaultValues) {
       const currentClienteMode = initialDefaultValues.remitente_cliente_id ? 'existing' : (initialDefaultValues.cliente_temporal_nombre ? 'temporal' : 'existing');
       setClienteSelectionMode(currentClienteMode);
-      
+
       form.reset({
         ...initialDefaultValues,
         remitente_cliente_id: initialDefaultValues.remitente_cliente_id ?? null,
@@ -191,40 +198,40 @@ export function EnvioForm({
         setGeocodedDest(null);
       }
     } else { // For create mode, ensure form is reset to its initial clean state
-        form.reset({
-            remitente_cliente_id: null,
-            cliente_temporal_nombre: "",
-            cliente_temporal_telefono: "",
-            nombre_destinatario: "",
-            telefono_destinatario: "",
-            direccion_origen: "",
-            latitud_origen: null,
-            longitud_origen: null,
-            empresa_origen_id: null,
-            notas_origen: "",
-            direccion_destino: "",
-            latitud_destino: null,
-            longitud_destino: null,
-            empresa_destino_id: null,
-            notas_destino: "",
-            tipo_paquete_id: tiposPaquete.length > 0 ? tiposPaquete[0].id : undefined,
-            peso_kg: null,
-            tipo_servicio_id: tiposServicio.length > 0 ? tiposServicio[0].id : undefined,
-            precio: 0,
-            estado: 'pendiente_asignacion',
-            fecha_estimada_entrega: undefined,
-            horario_retiro_desde: "",
-            horario_entrega_hasta: "",
-            repartidor_asignado_id: null,
-            notas_conductor: "",
-            detalles_adicionales: "",
-        });
-        setGeocodedOrigin(null);
-        setGeocodedDest(null);
-        setClienteSelectionMode('existing'); // Default to existing client selection mode
+      form.reset({
+        remitente_cliente_id: null,
+        cliente_temporal_nombre: "",
+        cliente_temporal_telefono: "",
+        nombre_destinatario: "",
+        telefono_destinatario: "",
+        direccion_origen: "",
+        latitud_origen: null,
+        longitud_origen: null,
+        empresa_origen_id: null,
+        notas_origen: "",
+        direccion_destino: "",
+        latitud_destino: null,
+        longitud_destino: null,
+        empresa_destino_id: null,
+        notas_destino: "",
+        tipo_paquete_id: tiposPaquete.length > 0 ? tiposPaquete[0].id : undefined,
+        peso_kg: null,
+        tipo_servicio_id: tiposServicio.length > 0 ? tiposServicio[0].id : undefined,
+        precio: 0,
+        estado: 'pendiente_asignacion',
+        fecha_estimada_entrega: undefined,
+        horario_retiro_desde: "",
+        horario_entrega_hasta: "",
+        repartidor_asignado_id: null,
+        notas_conductor: "",
+        detalles_adicionales: "",
+      });
+      setGeocodedOrigin(null);
+      setGeocodedDest(null);
+      setClienteSelectionMode('existing'); // Default to existing client selection mode
     }
   }, [initialDefaultValues, form, tiposPaquete, tiposServicio]);
-  
+
   React.useEffect(() => {
     if (clienteSelectionMode === 'existing') {
       form.setValue('cliente_temporal_nombre', ""); // Use "" instead of null
@@ -282,19 +289,19 @@ export function EnvioForm({
     setIsSubmitting(true);
     // Ensure optional string fields that are empty in the form are sent as null if schema expects nullable
     const dataToSubmit: Envio = {
-        ...formData,
-        cliente_temporal_nombre: formData.cliente_temporal_nombre || null,
-        cliente_temporal_telefono: formData.cliente_temporal_telefono || null,
-        empresa_origen_id: formData.empresa_origen_id || null,
-        notas_origen: formData.notas_origen || null,
-        empresa_destino_id: formData.empresa_destino_id || null,
-        notas_destino: formData.notas_destino || null,
-        peso_kg: formData.peso_kg === 0 ? null : formData.peso_kg, // Assuming 0 means not set for weight
-        horario_retiro_desde: formData.horario_retiro_desde || null,
-        horario_entrega_hasta: formData.horario_entrega_hasta || null,
-        repartidor_asignado_id: formData.repartidor_asignado_id || null,
-        notas_conductor: formData.notas_conductor || null,
-        detalles_adicionales: formData.detalles_adicionales || null,
+      ...formData,
+      cliente_temporal_nombre: formData.cliente_temporal_nombre || null,
+      cliente_temporal_telefono: formData.cliente_temporal_telefono || null,
+      empresa_origen_id: formData.empresa_origen_id || null,
+      notas_origen: formData.notas_origen || null,
+      empresa_destino_id: formData.empresa_destino_id || null,
+      notas_destino: formData.notas_destino || null,
+      peso_kg: formData.peso_kg === 0 ? null : formData.peso_kg, // Assuming 0 means not set for weight
+      horario_retiro_desde: formData.horario_retiro_desde || null,
+      horario_entrega_hasta: formData.horario_entrega_hasta || null,
+      repartidor_asignado_id: formData.repartidor_asignado_id || null,
+      notas_conductor: formData.notas_conductor || null,
+      detalles_adicionales: formData.detalles_adicionales || null,
     };
     await onSubmit(dataToSubmit);
     setIsSubmitting(false);
@@ -303,7 +310,7 @@ export function EnvioForm({
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(processSubmit)} className="space-y-8">
-        
+
         <Card>
           <CardHeader>
             <CardTitle>Información del Cliente</CardTitle>
@@ -377,7 +384,7 @@ export function EnvioForm({
         </Card>
 
         <Card>
-          <CardHeader><CardTitle className="flex items-center gap-2"><MapPin className="text-blue-500"/> Origen del Envío</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="flex items-center gap-2"><MapPin className="text-blue-500" /> Origen del Envío</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <FormField
               control={form.control}
@@ -394,20 +401,20 @@ export function EnvioForm({
                   </div>
                   {!isMapsApiReady && <FormDescription className="text-orange-600">API de Mapas no disponible.</FormDescription>}
                   {geocodedOrigin?.formattedAddress && <FormDescription className="text-green-600 flex items-center gap-1"><CheckCircle size={16} /> Verificada: {geocodedOrigin.formattedAddress}</FormDescription>}
-                  {!isGeocodingOrigin && form.formState.dirtyFields.direccion_origen && !geocodedOrigin?.formattedAddress && <FormDescription className="text-orange-600 flex items-center gap-1"><AlertTriangle size={16}/> Verifique la dirección.</FormDescription>}
+                  {!isGeocodingOrigin && form.formState.dirtyFields.direccion_origen && !geocodedOrigin?.formattedAddress && <FormDescription className="text-orange-600 flex items-center gap-1"><AlertTriangle size={16} /> Verifique la dirección.</FormDescription>}
                   <FormMessage />
                 </FormItem>
               )}
             />
             <Controller control={form.control} name="latitud_origen" render={({ field }) => <input type="hidden" {...field} value={field.value ?? ""} />} />
             <Controller control={form.control} name="longitud_origen" render={({ field }) => <input type="hidden" {...field} value={field.value ?? ""} />} />
-            
+
             <FormField
               control={form.control}
               name="empresa_origen_id"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="flex items-center gap-1"><Building size={16}/>Empresa de Origen (Opcional)</FormLabel>
+                  <FormLabel className="flex items-center gap-1"><Building size={16} />Empresa de Origen (Opcional)</FormLabel>
                   <Select onValueChange={field.onChange} value={field.value || ""} defaultValue={field.value || ""}>
                     <FormControl><SelectTrigger><SelectValue placeholder="Seleccione si el origen es una empresa" /></SelectTrigger></FormControl>
                     <SelectContent>
@@ -419,22 +426,22 @@ export function EnvioForm({
                 </FormItem>
               )}
             />
-             <FormField
-                control={form.control}
-                name="notas_origen"
-                render={({ field }) => (
-                    <FormItem>
-                    <FormLabel>Notas de Origen (Opcional)</FormLabel>
-                    <FormControl><Textarea placeholder="Ej: Dejar en recepción, preguntar por Juan" {...field} value={field.value ?? ""} /></FormControl>
-                    <FormMessage />
-                    </FormItem>
-                )}
+            <FormField
+              control={form.control}
+              name="notas_origen"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Notas de Origen (Opcional)</FormLabel>
+                  <FormControl><Textarea placeholder="Ej: Dejar en recepción, preguntar por Juan" {...field} value={field.value ?? ""} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader><CardTitle className="flex items-center gap-2"><MapPin className="text-red-500"/> Destino del Envío</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="flex items-center gap-2"><MapPin className="text-red-500" /> Destino del Envío</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <FormField
               control={form.control}
@@ -451,20 +458,20 @@ export function EnvioForm({
                   </div>
                   {!isMapsApiReady && <FormDescription className="text-orange-600">API de Mapas no disponible.</FormDescription>}
                   {geocodedDest?.formattedAddress && <FormDescription className="text-green-600 flex items-center gap-1"><CheckCircle size={16} /> Verificada: {geocodedDest.formattedAddress}</FormDescription>}
-                  {!isGeocodingDest && form.formState.dirtyFields.direccion_destino && !geocodedDest?.formattedAddress && <FormDescription className="text-orange-600 flex items-center gap-1"><AlertTriangle size={16}/> Verifique la dirección.</FormDescription>}
+                  {!isGeocodingDest && form.formState.dirtyFields.direccion_destino && !geocodedDest?.formattedAddress && <FormDescription className="text-orange-600 flex items-center gap-1"><AlertTriangle size={16} /> Verifique la dirección.</FormDescription>}
                   <FormMessage />
                 </FormItem>
               )}
             />
             <Controller control={form.control} name="latitud_destino" render={({ field }) => <input type="hidden" {...field} value={field.value ?? ""} />} />
             <Controller control={form.control} name="longitud_destino" render={({ field }) => <input type="hidden" {...field} value={field.value ?? ""} />} />
-            
+
             <FormField
               control={form.control}
               name="empresa_destino_id"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="flex items-center gap-1"><Building size={16}/>Empresa de Destino (Opcional)</FormLabel>
+                  <FormLabel className="flex items-center gap-1"><Building size={16} />Empresa de Destino (Opcional)</FormLabel>
                   <Select onValueChange={field.onChange} value={field.value || ""} defaultValue={field.value || ""}>
                     <FormControl><SelectTrigger><SelectValue placeholder="Seleccione si el destino es una empresa" /></SelectTrigger></FormControl>
                     <SelectContent>
@@ -476,40 +483,40 @@ export function EnvioForm({
                 </FormItem>
               )}
             />
-             <FormField
-                control={form.control}
-                name="notas_destino"
-                render={({ field }) => (
-                    <FormItem>
-                    <FormLabel>Notas de Destino (Opcional)</FormLabel>
-                    <FormControl><Textarea placeholder="Ej: Tocar timbre Depto 3B, horario de entrega preferido" {...field} value={field.value ?? ""} /></FormControl>
-                    <FormMessage />
-                    </FormItem>
-                )}
+            <FormField
+              control={form.control}
+              name="notas_destino"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Notas de Destino (Opcional)</FormLabel>
+                  <FormControl><Textarea placeholder="Ej: Tocar timbre Depto 3B, horario de entrega preferido" {...field} value={field.value ?? ""} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                 <FormField
-                    control={form.control}
-                    name="nombre_destinatario"
-                    render={({ field }) => (
-                        <FormItem>
-                        <FormLabel>Nombre de quien recibe</FormLabel>
-                        <FormControl><Input placeholder="Nombre completo del destinatario" {...field} value={field.value ?? ""} /></FormControl>
-                        <FormMessage />
-                        </FormItem>
-                    )}
-                 />
-                <FormField
-                    control={form.control}
-                    name="telefono_destinatario"
-                    render={({ field }) => (
-                        <FormItem>
-                        <FormLabel>Teléfono de quien recibe</FormLabel>
-                        <FormControl><Input placeholder="Teléfono del destinatario" {...field} value={field.value ?? ""} /></FormControl>
-                        <FormMessage />
-                        </FormItem>
-                    )}
-                />
+              <FormField
+                control={form.control}
+                name="nombre_destinatario"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Nombre de quien recibe</FormLabel>
+                    <FormControl><Input placeholder="Nombre completo del destinatario" {...field} value={field.value ?? ""} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="telefono_destinatario"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Teléfono de quien recibe</FormLabel>
+                    <FormControl><Input placeholder="Teléfono del destinatario" {...field} value={field.value ?? ""} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
             </div>
 
 
@@ -542,10 +549,10 @@ export function EnvioForm({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Peso (kg) (Opcional)</FormLabel>
-                    <FormControl><Input type="number" step="0.1" placeholder="Ej: 1.5" 
-                     {...field} 
-                     onChange={e => field.onChange(e.target.value === '' ? null : parseFloat(e.target.value))}
-                     value={field.value ?? ""} 
+                    <FormControl><Input type="number" step="0.1" placeholder="Ej: 1.5"
+                      {...field}
+                      onChange={e => field.onChange(e.target.value === '' ? null : parseFloat(e.target.value))}
+                      value={field.value ?? ""}
                     /></FormControl>
                     <FormMessage />
                   </FormItem>
@@ -574,35 +581,35 @@ export function EnvioForm({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Precio</FormLabel>
-                  <FormControl><Input type="number" step="0.01" placeholder="Ej: 500.00" 
-                    {...field} 
+                  <FormControl><Input type="number" step="0.01" placeholder="Ej: 500.00"
+                    {...field}
                     onChange={e => field.onChange(parseFloat(e.target.value) || 0)}
-                    value={field.value ?? 0} 
+                    value={field.value ?? 0}
                   /></FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
             <FormField
-                control={form.control}
-                name="estado"
-                render={({ field }) => (
-                    <FormItem>
-                    <FormLabel>Estado del Envío</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value} defaultValue={field.value}>
-                        <FormControl><SelectTrigger><SelectValue placeholder="Seleccione un estado" /></SelectTrigger></FormControl>
-                        <SelectContent>
-                        {EstadoEnvioEnum.options.map(estado => (
-                            <SelectItem key={estado} value={estado}>
-                            {estado.split('_').map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' ')}
-                            </SelectItem>
-                        ))}
-                        </SelectContent>
-                    </Select>
-                    <FormMessage />
-                    </FormItem>
-                )}
-             />
+              control={form.control}
+              name="estado"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Estado del Envío</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value} defaultValue={field.value}>
+                    <FormControl><SelectTrigger><SelectValue placeholder="Seleccione un estado" /></SelectTrigger></FormControl>
+                    <SelectContent>
+                      {EstadoEnvioEnum.options.map(estado => (
+                        <SelectItem key={estado} value={estado}>
+                          {estado.split('_').map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' ')}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
             <FormField
               control={form.control}
               name="fecha_estimada_entrega"
@@ -626,7 +633,7 @@ export function EnvioForm({
                         mode="single"
                         selected={field.value ? new Date(field.value) : undefined}
                         onSelect={(date) => field.onChange(date)}
-                        disabled={(date) => date < new Date(new Date().setDate(new Date().getDate() -1)) } 
+                        disabled={(date) => date < new Date(new Date().setDate(new Date().getDate() - 1))}
                         initialFocus
                         locale={es}
                       />
@@ -647,16 +654,16 @@ export function EnvioForm({
                 </FormItem>
               )}
             />
-             <FormField
-                control={form.control}
-                name="detalles_adicionales"
-                render={({ field }) => (
-                    <FormItem>
-                    <FormLabel>Detalles Adicionales (Opcional)</FormLabel>
-                    <FormControl><Textarea placeholder="Cualquier otra información relevante para el envío..." {...field} value={field.value ?? ""} /></FormControl>
-                    <FormMessage />
-                    </FormItem>
-                )}
+            <FormField
+              control={form.control}
+              name="detalles_adicionales"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Detalles Adicionales (Opcional)</FormLabel>
+                  <FormControl><Textarea placeholder="Cualquier otra información relevante para el envío..." {...field} value={field.value ?? ""} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
           </CardContent>
         </Card>
@@ -670,4 +677,3 @@ export function EnvioForm({
   );
 }
 
-    
