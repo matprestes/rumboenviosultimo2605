@@ -7,9 +7,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ArrowLeft, Building, CalendarIcon as IconCalendar, CheckCircle, ClipboardEdit, Edit, Info, Loader2, MapPin, Package, Play, PowerOff, RefreshCw, Route, Truck, User, XCircle, InfoIcon } from "lucide-react";
+import { ArrowLeft, Building, CalendarIcon as IconCalendar, CheckCircle, ClipboardEdit, Edit, Info, Loader2, MapPin, Package, Play, PowerOff, RefreshCw, Route, Truck, User, XCircle, InfoIcon, Sparkles } from "lucide-react";
 import { getRepartoByIdAction, updateRepartoEstadoAction, updateParadaEstadoAction, reorderParadasAction } from '@/actions/reparto-actions';
-import type { RepartoConDetalles, ParadaConDetalles, EstadoReparto, EstadoEnvio, EnvioConDetalles, Empresa } from '@/lib/schemas';
+import type { RepartoConDetalles, ParadaConDetalles, EstadoReparto, EstadoEnvio, EnvioConDetalles, Empresa, MappableStop } from '@/lib/schemas';
 import { EstadoRepartoEnum, EstadoEnvioEnum } from '@/lib/schemas';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
@@ -21,7 +21,7 @@ import { Input } from '@/components/ui/input';
 import { RepartoMapComponent } from '@/components/reparto-map-component';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
-import { getGoogleMapsApi } from '@/services/google-maps-service';
+import { getGoogleMapsApi, optimizeDeliveryRoute } from '@/services/google-maps-service';
 
 
 interface RepartoDetallePageProps {
@@ -42,6 +42,7 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
   const [totalDistance, setTotalDistance] = React.useState<number | null>(null);
   const [googleMapsApi, setGoogleMapsApi] = React.useState<typeof google | null>(null);
   const [isMapsApiReady, setIsMapsApiReady] = React.useState(false);
+  const [isOptimizingRoute, setIsOptimizingRoute] = React.useState(false);
 
 
   React.useEffect(() => {
@@ -78,9 +79,9 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
     }
     
     const sortedParadas = (repartoDataWithDate.paradas_reparto || [])
-        .map(p => ({...p, orden_visita: p.orden_visita === null ? Infinity : p.orden_visita})) // Handle null order for sorting
+        .map(p => ({...p, orden_visita: p.orden_visita === null ? Infinity : p.orden_visita})) 
         .sort((a, b) => (a.orden_visita!) - (b.orden_visita!))
-        .map(p => ({...p, orden_visita: p.orden_visita === Infinity ? null : p.orden_visita})); // Restore null if it was
+        .map(p => ({...p, orden_visita: p.orden_visita === Infinity ? null : p.orden_visita})); 
 
     setReparto({...repartoDataWithDate, paradas: sortedParadas});
     setParadasEdit(sortedParadas);
@@ -101,19 +102,27 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
     const pointsToCalculate: google.maps.LatLngLiteral[] = [];
     const paradasSorted = [...paradasEdit].sort((a,b) => (a.orden_visita || Infinity) - (b.orden_visita || Infinity));
 
-    // Add empresa origen if it's a lote reparto and has coordinates
-    if (reparto.empresa_asociada_id && reparto.empresas?.latitud != null && reparto.empresas?.longitud != null) {
-      pointsToCalculate.push({ lat: reparto.empresas.latitud, lng: reparto.empresas.longitud });
+    const empresaOrigenParaMapa = reparto.empresa_asociada_id && reparto.empresas 
+    ? {
+        latitud: reparto.empresas.latitud,
+        longitud: reparto.empresas.longitud,
+      }
+    : null;
+
+    let firstStopIsExplicitPickup = false;
+    if (paradasSorted.length > 0 && !paradasSorted[0].envio_id && paradasSorted[0].descripcion_parada?.toLowerCase().includes('retiro')) {
+       if (empresaOrigenParaMapa?.latitud != null && empresaOrigenParaMapa?.longitud != null) {
+            pointsToCalculate.push({ lat: empresaOrigenParaMapa.latitud, lng: empresaOrigenParaMapa.longitud });
+            firstStopIsExplicitPickup = true;
+       }
+    } else if (empresaOrigenParaMapa?.latitud != null && empresaOrigenParaMapa?.longitud != null) {
+        pointsToCalculate.push({ lat: empresaOrigenParaMapa.latitud, lng: empresaOrigenParaMapa.longitud });
     }
+
 
     paradasSorted.forEach(parada => {
       if (parada.envio_id && parada.envios?.latitud_destino != null && parada.envios?.longitud_destino != null) {
         pointsToCalculate.push({ lat: parada.envios.latitud_destino, lng: parada.envios.longitud_destino });
-      } else if (!parada.envio_id && !reparto.empresa_asociada_id && parada.orden_visita === 1 && parada.descripcion_parada?.toLowerCase().includes('retiro')) {
-        // This case is tricky: a "retiro" stop not linked to empresa_asociada_id. 
-        // It would need its own coordinates on the parada_reparto table if it's a generic pickup point.
-        // For now, we'll skip if no coords are directly available for generic pickup points on paradas.
-        // If the `descripcion_parada` implied an address that could be geocoded dynamically here, that's an option too.
       }
     });
 
@@ -127,7 +136,7 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
       const to = new googleMapsApi.maps.LatLng(pointsToCalculate[i + 1]);
       distance += googleMapsApi.maps.geometry.spherical.computeDistanceBetween(from, to);
     }
-    setTotalDistance(distance / 1000); // Convert meters to kilometers
+    setTotalDistance(distance / 1000); 
   }, [isMapsApiReady, googleMapsApi, reparto, paradasEdit]);
 
   React.useEffect(() => {
@@ -161,7 +170,7 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
   };
   
   const handleOrdenChange = (paradaId: string, nuevoOrdenStr: string) => {
-    const nuevoOrden = nuevoOrdenStr === '' ? null : parseInt(nuevoOrdenStr, 10); // Allow empty string to become null
+    const nuevoOrden = nuevoOrdenStr === '' ? null : parseInt(nuevoOrdenStr, 10); 
     setParadasEdit(prev => 
       prev.map(p => p.id === paradaId ? { ...p, orden_visita: (nuevoOrden !== null && !isNaN(nuevoOrden)) ? nuevoOrden : null } : p)
     );
@@ -173,10 +182,14 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
     const orderNumbers = paradasEdit.map(p => p.orden_visita).filter(o => o !== null && o !== undefined);
     const hasDuplicates = new Set(orderNumbers).size !== orderNumbers.length;
     if (hasDuplicates) {
-      toast({ title: "Error de Orden", description: "Los números de orden de visita deben ser únicos.", variant: "destructive"});
+      toast({ title: "Error de Orden", description: "Los números de orden de visita deben ser únicos y no pueden estar vacíos.", variant: "destructive"});
       return;
     }
-    // Ensure paradas with null order are handled or assigned a high number for sorting if needed
+    if (paradasEdit.some(p => p.orden_visita === null || p.orden_visita === undefined || p.orden_visita <= 0)) {
+      toast({ title: "Error de Orden", description: "Todos los números de orden deben ser positivos.", variant: "destructive"});
+      return;
+    }
+    
     const sortedParadaIds = paradasEdit
       .slice() 
       .sort((a, b) => (a.orden_visita ?? Infinity) - (b.orden_visita ?? Infinity))
@@ -192,6 +205,89 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
     }
     setIsUpdating(false);
   };
+
+  const handleOptimizeRoute = async () => {
+    if (!reparto || !isMapsApiReady || paradasEdit.length === 0) {
+      toast({ title: "No se puede optimizar", description: "No hay paradas suficientes o la API de mapas no está lista.", variant: "warning" });
+      return;
+    }
+    setIsOptimizingRoute(true);
+
+    const pointsToOptimize: MappableStop[] = [];
+    const empresaOrigen = reparto.empresas;
+    const explicitPickupStop = paradasEdit.find(p => !p.envio_id && p.descripcion_parada?.toLowerCase().includes('retiro'));
+
+    // Define Origin
+    if (explicitPickupStop && empresaOrigen?.latitud != null && empresaOrigen?.longitud != null) {
+      pointsToOptimize.push({ id: explicitPickupStop.id!, location: { lat: empresaOrigen.latitud, lng: empresaOrigen.longitud } });
+    } else if (empresaOrigen?.latitud != null && empresaOrigen?.longitud != null) {
+      pointsToOptimize.push({ id: 'ORIGIN_EMPRESA_ANCHOR', location: { lat: empresaOrigen.latitud, lng: empresaOrigen.longitud } });
+    }
+
+    // Add Delivery Stops as Waypoints
+    paradasEdit.forEach(parada => {
+      if (parada.envio_id && parada.envios?.latitud_destino != null && parada.envios?.longitud_destino != null) {
+         if (!explicitPickupStop || parada.id !== explicitPickupStop.id) { // Avoid duplicating the pickup if it's also in paradasEdit
+            pointsToOptimize.push({ id: parada.id!, location: { lat: parada.envios.latitud_destino, lng: parada.envios.longitud_destino } });
+         }
+      }
+    });
+    
+    if (pointsToOptimize.length < 2) {
+      toast({ title: "Optimización no posible", description: "Se necesitan al menos un origen y un destino con coordenadas válidas.", variant: "warning" });
+      setIsOptimizingRoute(false);
+      return;
+    }
+
+    try {
+      const optimizedRoutePoints = await optimizeDeliveryRoute(pointsToOptimize);
+      if (optimizedRoutePoints) {
+        const originalParadasMap = new Map(paradasEdit.map(p => [p.id, p]));
+        const newOrderedParadas: ParadaConDetalles[] = [];
+        let orderCounter = 1;
+
+        optimizedRoutePoints.forEach(optimizedStop => {
+          if (optimizedStop.id === 'ORIGIN_EMPRESA_ANCHOR') {
+            // This was a placeholder for company origin if no explicit pickup stop.
+            // If an explicit pickup stop exists, it should have been the first in pointsToOptimize.
+            // We need to ensure the explicit pickup stop is handled correctly.
+            const actualPickupStop = paradasEdit.find(p => !p.envio_id && p.descripcion_parada?.toLowerCase().includes('retiro'));
+            if (actualPickupStop && !newOrderedParadas.find(p=>p.id === actualPickupStop.id)) {
+              newOrderedParadas.push({ ...actualPickupStop, orden_visita: orderCounter++ });
+            }
+          } else {
+            const originalParada = originalParadasMap.get(optimizedStop.id);
+            if (originalParada && !newOrderedParadas.find(p=>p.id === originalParada.id)) {
+              newOrderedParadas.push({ ...originalParada, orden_visita: orderCounter++ });
+            }
+          }
+        });
+        
+        // Ensure all original paradas are included, preserving non-optimized ones if any were excluded
+        // This might be needed if some paradas had no coords and were skipped in pointsToOptimize
+        paradasEdit.forEach(originalP => {
+            if (!newOrderedParadas.find(p => p.id === originalP.id)) {
+                newOrderedParadas.push({...originalP, orden_visita: originalP.orden_visita || orderCounter++ }); // Keep original order or append
+            }
+        });
+        // Final sort by the newly assigned (or preserved) orden_visita
+        newOrderedParadas.sort((a,b) => (a.orden_visita || Infinity) - (b.orden_visita || Infinity));
+        // Re-assign sequential order_visita based on the final sorted list
+        const finalReorderedParadas = newOrderedParadas.map((p, index) => ({...p, orden_visita: index + 1}));
+
+
+        setParadasEdit(finalReorderedParadas);
+        toast({ title: "Ruta Optimizada", description: "El orden de las paradas ha sido optimizado. Guarde los cambios." });
+      } else {
+        toast({ title: "Error de Optimización", description: "No se pudo optimizar la ruta.", variant: "destructive" });
+      }
+    } catch (error: any) {
+      toast({ title: "Error de Optimización", description: error.message || "Ocurrió un error desconocido.", variant: "destructive" });
+    } finally {
+      setIsOptimizingRoute(false);
+    }
+  };
+
 
   if (isLoading || !repartoId) {
     return <div className="flex justify-center items-center h-screen"><Loader2 className="h-16 w-16 animate-spin text-primary" /></div>;
@@ -212,7 +308,7 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
       case 'completado':
         return 'bg-green-500 hover:bg-green-600 text-white';
       case 'planificado':
-      case 'pendiente_asignacion':
+      case 'pendiente_asignacion': // Should not happen for parada_estado, but good to cover
         return 'bg-yellow-500 hover:bg-yellow-600 text-black';
       case 'asignado':
       case 'en_camino':
@@ -225,7 +321,7 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
     }
   };
 
-  const paradas = paradasEdit; // Use the editable list for display and calculations
+  const paradas = paradasEdit;
   const resumenParadas = {
     total: paradas.length,
     pendientes: paradas.filter(p => p.estado_parada === 'asignado' || p.estado_parada === 'pendiente_asignacion').length,
@@ -236,6 +332,7 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
 
   const empresaOrigenParaMapa = reparto.empresa_asociada_id && reparto.empresas 
     ? {
+        id: reparto.empresas.id, // Pass ID for MappableStop
         latitud: reparto.empresas.latitud,
         longitud: reparto.empresas.longitud,
         nombre: reparto.empresas.nombre,
@@ -255,9 +352,14 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
             <ClipboardEdit size={32} /> Detalle del Reparto
           </h1>
         </div>
-         <Button onClick={fetchRepartoDetails} variant="outline" size="sm" disabled={isUpdating || isLoading}>
-            <RefreshCw className={`mr-2 h-4 w-4 ${isLoading || isUpdating ? 'animate-spin' : ''}`} /> Refrescar
-        </Button>
+        <div className="flex items-center gap-2">
+            <Button onClick={handleOptimizeRoute} variant="outline" size="sm" disabled={isRepartoFinalizado || isLoading || isUpdating || isOptimizingRoute || !isMapsApiReady}>
+                {isOptimizingRoute ? <Loader2 className="animate-spin mr-2 h-4 w-4"/> : <Sparkles size={14} className="mr-2"/>} Optimizar Ruta (IA)
+            </Button>
+            <Button onClick={fetchRepartoDetails} variant="outline" size="sm" disabled={isLoading || isUpdating || isOptimizingRoute}>
+                <RefreshCw className={`mr-2 h-4 w-4 ${isLoading || isUpdating || isOptimizingRoute ? 'animate-spin' : ''}`} /> Refrescar
+            </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -268,7 +370,7 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
                     <div>
                     <CardTitle className="text-primary">ID Reparto: {reparto.id?.substring(0, 8)}...</CardTitle>
                     <CardDescription className="text-sm text-muted-foreground">
-                        Fecha: {reparto.fecha_reparto && isValid(reparto.fecha_reparto) ? format(reparto.fecha_reparto, "PPP", { locale: es }) : 'N/A'}
+                        Fecha: {reparto.fecha_reparto && isValid(new Date(reparto.fecha_reparto)) ? format(new Date(reparto.fecha_reparto), "PPP", { locale: es }) : 'N/A'}
                     </CardDescription>
                     </div>
                     <Badge variant="default" className={cn("text-sm font-semibold", getEstadoBadgeVariant(reparto.estado))}>
@@ -329,8 +431,8 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
                 <div className="flex justify-between items-center">
                     <CardTitle className="text-primary">Paradas ({resumenParadas.total})</CardTitle>
                     {!isRepartoFinalizado && (
-                      <Button onClick={handleSaveOrden} disabled={isUpdating} size="sm">
-                        {isUpdating ? <Loader2 className="animate-spin mr-1 h-4 w-4"/> : <ClipboardEdit size={14} className="mr-1"/>} Guardar Orden
+                      <Button onClick={handleSaveOrden} disabled={isUpdating || isOptimizingRoute} size="sm">
+                        {(isUpdating || isOptimizingRoute) ? <Loader2 className="animate-spin mr-1 h-4 w-4"/> : <ClipboardEdit size={14} className="mr-1"/>} Guardar Orden
                       </Button>
                     )}
                 </div>
@@ -346,7 +448,7 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
                 {paradas.length === 0 ? (
                     <p className="text-muted-foreground text-center py-10 px-4">Este reparto no tiene paradas asignadas.</p>
                 ) : (
-                    <ScrollArea className="h-[calc(100vh-12rem)] sm:h-auto lg:max-h-[calc(100vh-20rem)]">
+                    <ScrollArea className="h-[calc(100vh-12rem)] sm:h-auto lg:max-h-[calc(100vh-20rem)]"> {/* Adjusted height for scroll area */}
                     <Table className="text-xs sm:text-sm">
                         <TableHeader>
                         <TableRow>
@@ -364,7 +466,7 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
                                 value={parada.orden_visita ?? ""}
                                 onChange={(e) => handleOrdenChange(parada.id!, e.target.value)}
                                 className="w-12 h-8 text-center px-1 text-xs"
-                                disabled={isUpdating || isRepartoFinalizado}
+                                disabled={isUpdating || isRepartoFinalizado || isOptimizingRoute}
                                 min="1"
                                 />
                             </TableCell>
@@ -398,7 +500,7 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
                                 <Select
                                 value={parada.estado_parada || undefined}
                                 onValueChange={(value) => handleParadaEstadoChange(parada.id!, value as EstadoEnvio, parada.envio_id || null)}
-                                disabled={isUpdating || isRepartoFinalizado}
+                                disabled={isUpdating || isRepartoFinalizado || isOptimizingRoute}
                                 >
                                 <SelectTrigger className={cn("h-8 text-xs", getEstadoBadgeVariant(parada.estado_parada))}>
                                     <SelectValue placeholder="Estado..." />
