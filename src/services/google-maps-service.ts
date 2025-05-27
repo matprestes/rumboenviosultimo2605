@@ -2,7 +2,7 @@
 // REMOVED 'use server'; directive. This module is for client-side Google Maps API interaction.
 
 import { Loader, type LoaderOptions } from '@googlemaps/js-api-loader';
-import type { MappableStop } from '@/lib/schemas';
+import type { MappableStop } from '@/lib/schemas'; // Ensure MappableStop is imported if defined elsewhere
 
 // Aproximado bounding box para Mar del Plata
 const MAR_DEL_PLATA_BOUNDS = {
@@ -21,7 +21,7 @@ if (!API_KEY && typeof window !== 'undefined') {
 }
 
 // Libraries needed for your application.
-// "directions" is NOT a library to be loaded here; DirectionsService is available with the core API.
+// 'directions' is NOT loaded as a library here. It's part of the core API.
 const libraries: LoaderOptions['libraries'] = ['geocoding', 'places', 'marker', 'geometry'];
 
 const loaderOptions: LoaderOptions = {
@@ -36,6 +36,7 @@ let loaderInstance: Loader | null = null;
 
 function getLoaderInstance(): Loader {
   if (!API_KEY) {
+    // This should ideally not happen if API_KEY check in getGoogleMapsApi is hit first.
     throw new Error('Google Maps API key no está configurada para la instancia del Loader.');
   }
   if (!loaderInstance) {
@@ -46,7 +47,6 @@ function getLoaderInstance(): Loader {
 
 export async function getGoogleMapsApi(): Promise<typeof google> {
   if (typeof window === 'undefined') {
-    // This case should ideally be caught before calling, but as a safeguard:
     console.warn('getGoogleMapsApi fue llamado desde un entorno no navegador. Google Maps API solo funciona en el cliente.');
     return Promise.reject(new Error('Google Maps API no puede cargarse en el servidor.'));
   }
@@ -54,6 +54,7 @@ export async function getGoogleMapsApi(): Promise<typeof google> {
   if (!API_KEY) {
     const errorMessage = 'La clave API de Google Maps no está configurada. Verifique la variable de entorno NEXT_PUBLIC_GOOGLE_MAPS_API_KEY.';
     console.error(errorMessage);
+    // To make it clear for the UI to react to API key missing:
     return Promise.reject(new Error(errorMessage));
   }
 
@@ -73,11 +74,12 @@ export async function getGoogleMapsApi(): Promise<typeof google> {
       } else if (errorMessage.includes('referernotallowedmaperror')) {
         userMessage += 'La URL actual no está permitida por las restricciones de tu clave API. Verificá la configuración de "Referers HTTP" en Google Cloud Console.';
       } else if (errorMessage.includes('library directions is unknown')) {
-        userMessage += 'Se intentó cargar la librería "directions" incorrectamente. Este es un error de configuración de la app.';
+        // This specific error should now be prevented by not including 'directions' in libraries.
+        userMessage += 'Se intentó cargar la librería "directions" incorrectamente. Ya está incluida en el core o no es un nombre válido de librería para cargar explícitamente.';
       } else {
-        userMessage += 'Posibles causas: API no habilitada, problemas de facturación, o restricciones de clave. Verificá tu consola de Google Cloud y la consola del navegador.';
+        userMessage += 'Posibles causas: API no habilitada, problemas de facturación, restricciones de clave, o problemas de red. Verificá tu consola de Google Cloud y la consola del navegador.';
       }
-      throw new Error(userMessage);
+      throw new Error(userMessage); // Propagate a user-friendly error
     });
   }
   return googleMapsApiPromise;
@@ -99,16 +101,20 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult | n
   }
   if (!API_KEY) {
     console.error('Geocodificación omitida: falta la API Key de Google Maps.');
+    // Throw an error or return null to allow graceful degradation.
+    // throw new Error('API Key for Google Maps is missing.');
     return null;
   }
 
   try {
-    const google = await getGoogleMapsApi();
+    const google = await getGoogleMapsApi(); // This ensures API is loaded.
     if (!google || !google.maps || !google.maps.Geocoder) {
+      // This case should be rare if getGoogleMapsApi resolves successfully
       throw new Error('Geocoder no disponible. API de Google Maps no cargada o incompleta.');
     }
 
     const geocoder = new google.maps.Geocoder();
+    // Ensure address includes "Mar del Plata, Argentina" for better local results
     let contextualAddress = address;
     if (!address.toLowerCase().includes('mar del plata')) {
       contextualAddress = `${address}, Mar del Plata`;
@@ -119,7 +125,8 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult | n
 
     const request: google.maps.GeocoderRequest = {
       address: contextualAddress,
-      componentRestrictions: { country: 'AR' },
+      componentRestrictions: { country: 'AR' }, // Restrict to Argentina
+      // Bounding box for Mar del Plata to bias results
       bounds: new google.maps.LatLngBounds(
         new google.maps.LatLng(MAR_DEL_PLATA_BOUNDS.south, MAR_DEL_PLATA_BOUNDS.west),
         new google.maps.LatLng(MAR_DEL_PLATA_BOUNDS.north, MAR_DEL_PLATA_BOUNDS.east)
@@ -143,11 +150,13 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult | n
         if (component.long_name.toLowerCase() === 'mar del plata') isMarDelPlataLocality = true;
       });
 
+      // Check if the result is plausibly within Mar del Plata
       const formattedAddressContainsMDP = result.formatted_address.toLowerCase().includes('mar del plata');
-      const isInBounds = lat >= MAR_DEL_PLATA_BOUNDS.south && lat <= MAR_DEL_PLATA_BOUNDS.north && lng >= MAR_DEL_PLATA_BOUNDS.west && lng <= MAR_DEL_PLATA_BOUNDS.east;
+      const isInBounds = lat >= MAR_DEL_PLATA_BOUNDS.south && lat <= MAR_DEL_PLATA_BOUNDS.north &&
+                         lng >= MAR_DEL_PLATA_BOUNDS.west && lng <= MAR_DEL_PLATA_BOUNDS.east;
 
       if (isMarDelPlataLocality || formattedAddressContainsMDP || isInBounds) {
-         if (!isMarDelPlataLocality && !formattedAddressContainsMDP && isInBounds) {
+        if (!isMarDelPlataLocality && !formattedAddressContainsMDP && isInBounds) {
           // This might happen if Google returns a result within bounds but doesn't explicitly name MDP in locality or formatted_address
           console.warn('Dirección en límites de MDP pero no identificada como tal por API (considerada válida):', result.formatted_address);
         }
@@ -155,12 +164,12 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult | n
           lat,
           lng,
           formattedAddress: result.formatted_address,
-          city: cityComponent || 'Mar del Plata',
+          city: cityComponent || 'Mar del Plata', // Default to Mar del Plata if no specific city found but in MDP context
           country: countryComponent || 'Argentina',
         };
       } else {
         console.warn('La dirección geocodificada no parece estar en Mar del Plata:', result.formatted_address, { cityComponent, lat, lng });
-        return null;
+        return null; // Address is outside desired area
       }
     } else {
       console.warn('No se encontraron resultados para la dirección (con contexto):', contextualAddress);
@@ -177,6 +186,7 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult | n
   }
 }
 
+
 // This function is intended for client-side use.
 export async function optimizeDeliveryRoute(stops: MappableStop[]): Promise<MappableStop[] | null> {
   if (typeof window === 'undefined') {
@@ -184,8 +194,8 @@ export async function optimizeDeliveryRoute(stops: MappableStop[]): Promise<Mapp
     return null;
   }
   if (stops.length < 2) {
-    console.warn("Se necesitan al menos 2 paradas (origen y un destino) para optimizar la ruta.");
-    return stops; 
+    // console.warn("Se necesitan al menos 2 paradas (origen y un destino) para optimizar la ruta.");
+    return stops; // Return original stops if not enough to optimize
   }
 
   try {
@@ -197,83 +207,93 @@ export async function optimizeDeliveryRoute(stops: MappableStop[]): Promise<Mapp
     const directionsService = new google.maps.DirectionsService();
 
     const origin = stops[0].location;
-    let destination = origin; 
+    let destination = origin; // Default if only one stop
     const waypoints: google.maps.DirectionsWaypoint[] = [];
 
     if (stops.length > 1) {
       destination = stops[stops.length - 1].location;
-      if (stops.length > 2) { 
+      if (stops.length > 2) { // Only if there are intermediate waypoints
         waypoints.push(...stops.slice(1, -1).map(stop => ({
           location: stop.location,
-          stopover: true,
+          stopover: true, // Required for waypoints to be treated as actual stops
         })));
       }
     }
     
     // If only 2 stops, it's just origin and destination, no waypoints to optimize via waypoint_order.
     // The API might still provide the best route between two points.
-    if (stops.length <= 2 && waypoints.length === 0) {
+    if (waypoints.length === 0 && stops.length <= 2) {
         // console.log("No waypoints to optimize, returning original stops for 2 points.");
-        return stops; 
+        return stops; // No optimization needed for direct route
     }
 
     const request: google.maps.DirectionsRequest = {
       origin: origin,
       destination: destination,
       waypoints: waypoints,
-      optimizeWaypoints: true, 
+      optimizeWaypoints: true, // This is key for reordering
       travelMode: google.maps.TravelMode.DRIVING,
     };
 
-    const response = await directionsService.route(request);
+    return new Promise((resolve, reject) => {
+      directionsService.route(request, (response, status) => {
+        if (status === google.maps.DirectionsStatus.OK && response && response.routes && response.routes.length > 0) {
+          const route = response.routes[0];
+          const optimizedStops: MappableStop[] = [];
 
-    if (response.status === 'OK' && response.routes && response.routes.length > 0) {
-      const route = response.routes[0];
-      const optimizedStops: MappableStop[] = [];
+          // Add origin
+          optimizedStops.push(stops[0]);
 
-      // Add origin
-      optimizedStops.push(stops[0]);
+          // Add waypoints in optimized order
+          if (route.waypoint_order && route.waypoint_order.length > 0) {
+            route.waypoint_order.forEach(orderIndex => {
+              // waypoint_order refers to indices in the *original waypoints array*
+              // The original waypoints array was stops.slice(1, -1)
+              optimizedStops.push(stops[orderIndex + 1]); // +1 because stops[0] was origin
+            });
+          } else if (waypoints.length > 0) { 
+             // If no waypoint_order but waypoints were sent (e.g., only one waypoint), add them in original relative order
+             // This branch might not be hit if optimizeWaypoints always provides an order for >0 waypoints.
+             waypoints.forEach((_wp, index) => optimizedStops.push(stops[index + 1]));
+          }
 
-      // Add waypoints in optimized order
-      if (route.waypoint_order && route.waypoint_order.length > 0) {
-        route.waypoint_order.forEach(orderIndex => {
-          // waypoint_order refers to indices in the *original waypoints array*
-          // The original waypoints array was stops.slice(1, -1)
-          optimizedStops.push(stops[orderIndex + 1]); // +1 because stops[0] was origin
-        });
-      } else if (waypoints.length > 0) { 
-         // If no waypoint_order but waypoints were sent, add them in original relative order
-         waypoints.forEach((_wp, index) => optimizedStops.push(stops[index + 1]));
-      }
-
-      // Add destination (if it was different from origin)
-      if (stops.length > 1) { // Only add if there was truly a separate destination
-         if (optimizedStops.length < stops.length) { // Check if destination was not added as a waypoint
-             optimizedStops.push(stops[stops.length - 1]);
-         } else if (optimizedStops[optimizedStops.length-1].id !== stops[stops.length - 1].id) {
-            // This case can happen if the last waypoint is also the destination
-            // and waypoint_order means the original last stop is not the last in optimized waypoints
-            // Ensure the true destination is last if it's not already.
-            // However, with optimizeWaypoints, the destination stop should always be the last one
-            // unless it was also a waypoint, which is complex.
-            // For simplicity, assume the last original stop is always the final destination.
-            const finalDestination = stops[stops.length -1];
-            if(!optimizedStops.find(s => s.id === finalDestination.id)){
-                optimizedStops.push(finalDestination);
+          // Add destination (if it was different from origin and not already the last waypoint)
+          if (stops.length > 1) { // Only add if there was truly a separate destination
+            if (optimizedStops.length < stops.length) {
+              optimizedStops.push(stops[stops.length - 1]);
+            } else if (optimizedStops.length > 0 && optimizedStops[optimizedStops.length-1].id !== stops[stops.length - 1].id) {
+              // This can happen if the destination was also treated as the last waypoint and the order changed.
+              // To be safe, ensure the original final destination is truly the last.
+              // However, with optimizeWaypoints, the API should ensure the destination is last.
+              // A simpler approach might be to not add destination if waypoints were present,
+              // as optimizeWaypoints should route through them to the destination.
+              // Let's ensure the last stop in the original list is the last one if it's not already
+              // included as the last of the optimized waypoints.
+              const finalDestinationStop = stops[stops.length - 1];
+              if (optimizedStops[optimizedStops.length -1].id !== finalDestinationStop.id) {
+                 optimizedStops.push(finalDestinationStop);
+              }
             }
-         }
-      }
-      
-      return optimizedStops;
-    } else {
-      console.error('Error de Directions API:', response.status, response);
-      throw new Error(`Error de Google Maps Directions API: ${response.status}`);
-    }
-  } catch (error) {
+          }
+          // Deduplicate in case origin/destination were also waypoints. Prefer the order from Google.
+          const uniqueOptimizedStops = Array.from(new Map(optimizedStops.map(item => [item.id, item])).values());
+          resolve(uniqueOptimizedStops);
+        } else {
+          console.error('Error de Directions API:', status, response);
+          reject(new Error(`Error de Google Maps Directions API: ${status}`));
+        }
+      });
+    });
+
+  } catch (error: any) {
     console.error('Error en optimizeDeliveryRoute:', error);
     // Propagate error to be caught by calling component
-    if (error instanceof Error) throw error;
-    throw new Error('Error desconocido durante la optimización de ruta.');
+    // Make sure error is an instance of Error
+    if (error instanceof Error) {
+      throw error;
+    } else {
+      throw new Error(String(error) || 'Error desconocido durante la optimización de ruta.');
+    }
   }
 }
 
