@@ -6,9 +6,9 @@ import {
     TipoServicioSchema, 
     type TipoServicio, 
     type TipoServicioFormValues,
-    TarifaDistanciaCalculadoraSchema, // Main schema for full object type
+    TarifaDistanciaCalculadoraSchema, 
     type TarifaDistanciaCalculadora,
-    type TarifaDistanciaFormValues // Type for form values
+    type TarifaDistanciaFormValues
 } from '@/lib/schemas';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
@@ -230,8 +230,8 @@ async function checkOverlap(
     return false; 
 }
 
-// Schema for validating the input to createTarifaDistanciaAction
-const CreateTarifaActionInputSchema = z.object({
+// Define the base fields for tarifa actions once, as a plain object.
+const BaseTarifaActionInputFields = {
   tipo_servicio_id: z.string().uuid("Debe seleccionar un tipo de servicio."),
   distancia_min_km: z.preprocess(
     (val) => parseFloat(String(val)),
@@ -249,7 +249,10 @@ const CreateTarifaActionInputSchema = z.object({
     (val) => parseFloat(String(val)),
     z.number().positive("El precio por km debe ser un número positivo.")
   ),
-}).superRefine((data, ctx) => {
+};
+
+// Common refinement logic
+const tarifaRangeRefinement = (data: { distancia_min_km: number, distancia_max_km: number }, ctx: z.RefinementCtx) => {
   if (data.distancia_min_km >= data.distancia_max_km) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -257,7 +260,11 @@ const CreateTarifaActionInputSchema = z.object({
       path: ["distancia_max_km"],
     });
   }
-});
+};
+
+// Schema for validating the input to createTarifaDistanciaAction
+const CreateTarifaActionInputSchema = z.object(BaseTarifaActionInputFields)
+  .superRefine(tarifaRangeRefinement);
 
 
 export async function createTarifaDistanciaAction(
@@ -303,9 +310,11 @@ export async function createTarifaDistanciaAction(
 }
 
 // Schema for validating the input to updateTarifaDistanciaAction
-const UpdateTarifaActionInputSchema = CreateTarifaActionInputSchema.extend({
-    id: z.string().uuid(), 
-});
+const UpdateTarifaActionInputSchema = z.object({
+    ...BaseTarifaActionInputFields, // Spread the base fields
+    id: z.string().uuid(),         // Add the id field
+  })
+  .superRefine(tarifaRangeRefinement); // Apply the same refinement
 
 
 export async function updateTarifaDistanciaAction(
@@ -313,16 +322,18 @@ export async function updateTarifaDistanciaAction(
   formData: TarifaDistanciaFormValues & { tipo_servicio_id: string }
 ): Promise<{ success: boolean; data?: TarifaDistanciaCalculadora; error?: string }> {
 
-  const dataForValidation = { ...formData, id }; // Include id for validation context if needed by checkOverlap
+  const dataForValidation = { ...formData, id }; 
   const validatedFields = UpdateTarifaActionInputSchema.safeParse(dataForValidation); 
 
   if (!validatedFields.success) {
+    console.error("Validation Errors (updateTarifaDistanciaAction):", validatedFields.error.flatten());
     return { success: false, error: validatedFields.error.flatten().fieldErrorsToString() };
   }
 
-  const { tipo_servicio_id, distancia_min_km, distancia_max_km, ...restOfData } = validatedFields.data;
+  // Omitting 'id' from restOfData as it's used in .eq() and not in the update payload itself
+  const { tipo_servicio_id, distancia_min_km, distancia_max_km, id: validatedId, ...restOfData } = validatedFields.data;
   
-  const hasOverlap = await checkOverlap(tipo_servicio_id, distancia_min_km, distancia_max_km, id);
+  const hasOverlap = await checkOverlap(tipo_servicio_id, distancia_min_km, distancia_max_km, validatedId);
   if (hasOverlap) {
     return { success: false, error: "El rango de distancia ingresado se solapa con otra tarifa existente para este tipo de servicio." };
   }
@@ -336,13 +347,11 @@ export async function updateTarifaDistanciaAction(
     precio_por_km: restOfData.precio_por_km,
     user_id: currentUserId,
   };
-  // Supabase update doesn't want the 'id' in the payload object itself for .update()
-  // delete (dataToUpdate as any).id; // This was in error, restOfData already excludes id from UpdateTarifaActionInputSchema
 
   const { data: updatedTarifa, error } = await supabase
     .from('tarifas_distancia_calculadora')
-    .update(dataToUpdate) // Pass only the fields to be updated
-    .eq('id', id)
+    .update(dataToUpdate) 
+    .eq('id', validatedId) // Use validatedId here (which is the original id passed to the function)
     .select()
     .single();
 
@@ -374,4 +383,3 @@ export async function deleteTarifaDistanciaAction(id: string, tipoServicioId: st
 }
     
 
-    
