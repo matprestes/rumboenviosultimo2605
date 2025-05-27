@@ -1,8 +1,8 @@
 
-// REMOVED 'use server'; directive. This module is for client-side Google Maps API interaction.
+// src/services/google-maps-service.ts
 
 import { Loader, type LoaderOptions } from '@googlemaps/js-api-loader';
-import type { MappableStop } from '@/lib/schemas'; 
+import type { MappableStop } from '@/lib/schemas';
 
 // Aproximado bounding box para Mar del Plata
 const MAR_DEL_PLATA_BOUNDS = {
@@ -14,26 +14,30 @@ const MAR_DEL_PLATA_BOUNDS = {
 
 const API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
-if (!API_KEY && typeof window !== 'undefined') { // Check for window to avoid server-side warnings during build
+// Check for API key existence on the client side
+if (typeof window !== 'undefined' && !API_KEY) {
   console.warn(
     'La clave de Google Maps API falta. Geocodificación y mapas no funcionarán. Asegurate de definir NEXT_PUBLIC_GOOGLE_MAPS_API_KEY en tu archivo .env.local.'
   );
 }
 
-const libraries: LoaderOptions['libraries'] = ['geocoding', 'places', 'marker', 'geometry', 'directions'];
+// Define the libraries needed across the application.
+// 'directions' should NOT be here as it's part of the core API.
+const libraries: LoaderOptions['libraries'] = ['geocoding', 'places', 'marker', 'geometry'];
 
 const loaderOptions: LoaderOptions = {
-  apiKey: API_KEY || '', // Loader handles empty string gracefully, but our getGoogleMapsApi throws error
+  apiKey: API_KEY || '', // Loader handles empty string if API_KEY is undefined, but getGoogleMapsApi throws error
   version: 'weekly',
   libraries,
-  id: '__googleMapsScriptId', 
+  id: '__googleMapsScriptId', // Consistent ID for the script tag
 };
 
 let googleMapsApiPromise: Promise<typeof google> | null = null;
 let loaderInstance: Loader | null = null;
 
+// Function to get a single loader instance
 function getLoaderInstance(): Loader {
-  if (!API_KEY) { // Should not be hit if getGoogleMapsApi pre-check works
+  if (!API_KEY) { // This check is more for robustness, getGoogleMapsApi has a stricter check
     throw new Error('Google Maps API key no está configurada para la instancia del Loader.');
   }
   if (!loaderInstance) {
@@ -44,21 +48,23 @@ function getLoaderInstance(): Loader {
 
 export async function getGoogleMapsApi(): Promise<typeof google> {
   if (typeof window === 'undefined') {
+    // This function should only be called on the client.
     // console.warn('getGoogleMapsApi fue llamado desde un entorno no navegador. Google Maps API solo funciona en el cliente.');
     return Promise.reject(new Error('Google Maps API no puede cargarse en el servidor.'));
   }
 
   if (!API_KEY) {
     const errorMessage = 'La clave API de Google Maps no está configurada. Verifique la variable de entorno NEXT_PUBLIC_GOOGLE_MAPS_API_KEY.';
-    console.error(errorMessage);
-    return Promise.reject(new Error(errorMessage));
+    console.error(errorMessage); // Log for developer
+    return Promise.reject(new Error(errorMessage)); // Reject for application logic
   }
 
   if (!googleMapsApiPromise) {
+    // Ensures Loader is instantiated only once and load is called only once on that instance.
     const loader = getLoaderInstance();
     googleMapsApiPromise = loader.load().catch(err => {
-      console.error("Error cargando Google Maps API:", err);
-      googleMapsApiPromise = null; 
+      console.error("Error cargando Google Maps API desde el loader:", err);
+      googleMapsApiPromise = null; // Reset promise on failure to allow retry if applicable
 
       let userMessage = 'Fallo al inicializar Google Maps. ';
       const errorMessage = (err as Error)?.message?.toLowerCase() || '';
@@ -69,12 +75,14 @@ export async function getGoogleMapsApi(): Promise<typeof google> {
          userMessage += 'La facturación no está habilitada para el proyecto en Google Cloud.';
       } else if (errorMessage.includes('referernotallowedmaperror')) {
         userMessage += 'La URL actual no está permitida por las restricciones de tu clave API. Verificá la configuración de "Referers HTTP" en Google Cloud Console.';
-      } else if (errorMessage.includes('library directions is unknown')) { // Should be caught by correct libraries array
+      } else if (errorMessage.includes('library directions is unknown')) {
         userMessage += 'Se intentó cargar la librería "directions" incorrectamente. Ya está incluida en el core o no es un nombre válido de librería para cargar explícitamente.';
+      } else if (errorMessage.includes('invalidkeymaperror')) {
+        userMessage += 'La clave API proporcionada es inválida. Verifícala.';
       } else {
         userMessage += 'Posibles causas: API no habilitada, problemas de facturación, restricciones de clave, o problemas de red. Verificá tu consola de Google Cloud y la consola del navegador.';
       }
-      throw new Error(userMessage); 
+      throw new Error(userMessage);
     });
   }
   return googleMapsApiPromise;
@@ -90,9 +98,11 @@ export interface GeocodeResult {
 
 export async function geocodeAddress(address: string): Promise<GeocodeResult | null> {
   if (typeof window === 'undefined') {
+    // console.warn("geocodeAddress called on server. Skipping.");
     return null;
   }
   if (!API_KEY) {
+    // console.warn("Google Maps API key is missing. Geocoding disabled.");
     return null;
   }
 
@@ -149,12 +159,12 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult | n
           lat,
           lng,
           formattedAddress: result.formatted_address,
-          city: cityComponent || 'Mar del Plata', 
+          city: cityComponent || 'Mar del Plata',
           country: countryComponent || 'Argentina',
         };
       } else {
         console.warn('La dirección geocodificada no parece estar en Mar del Plata:', result.formatted_address, { cityComponent, lat, lng });
-        return null; 
+        return null;
       }
     } else {
       console.warn('No se encontraron resultados para la dirección (con contexto):', contextualAddress);
@@ -162,78 +172,101 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult | n
     }
   } catch (error) {
     console.error('Error en geocodeAddress:', error);
+    // Prevent re-throwing if the error is already the user-friendly message from getGoogleMapsApi
     if (error instanceof Error && !error.message.startsWith('Fallo al inicializar Google Maps')) {
       throw new Error(`Fallo en geocodificación: ${error.message}`);
     }
+    // If it's the user-friendly message, just let it propagate or return null
     return null;
   }
 }
 
 export async function optimizeDeliveryRoute(stops: MappableStop[]): Promise<MappableStop[] | null> {
-    if (typeof window === 'undefined') return null;
-    if (stops.length < 2) return stops; // Not enough points to optimize or form a route
+  if (typeof window === 'undefined') return null;
+  if (!API_KEY) return null;
 
-    try {
-        const google = await getGoogleMapsApi();
-        if (!google || !google.maps || !google.maps.DirectionsService) {
-            throw new Error('DirectionsService no disponible. API de Google Maps no cargada o incompleta.');
-        }
+  if (stops.length < 2) {
+    // console.log("OptimizeRoute: Not enough stops to optimize (<2). Returning original.");
+    return stops; // Or null if an error/no-op should be more explicit
+  }
 
-        const directionsService = new google.maps.DirectionsService();
-        const origin = stops[0].location;
-        const destination = stops[stops.length - 1].location;
-        const waypoints: google.maps.DirectionsWaypoint[] = stops
-            .slice(1, -1)
-            .map(stop => ({ location: stop.location, stopover: true }));
-
-        // No waypoints to optimize if only origin and destination
-        if (stops.length === 2 || waypoints.length === 0) {
-            return stops;
-        }
-
-        const request: google.maps.DirectionsRequest = {
-            origin: origin,
-            destination: destination,
-            waypoints: waypoints,
-            optimizeWaypoints: true,
-            travelMode: google.maps.TravelMode.DRIVING,
-        };
-
-        return new Promise((resolve, reject) => {
-            directionsService.route(request, (response, status) => {
-                if (status === google.maps.DirectionsStatus.OK && response && response.routes && response.routes.length > 0) {
-                    const route = response.routes[0];
-                    const optimizedWaypoints: MappableStop[] = [];
-                    if (route.waypoint_order && route.waypoint_order.length > 0) {
-                        route.waypoint_order.forEach(orderIndex => {
-                            optimizedWaypoints.push(stops.slice(1, -1)[orderIndex]);
-                        });
-                    } else {
-                         // If no waypoint_order but waypoints were provided, keep original waypoint order
-                        optimizedWaypoints.push(...stops.slice(1,-1));
-                    }
-                    
-                    const finalOrderedStops = [stops[0], ...optimizedWaypoints, stops[stops.length - 1]];
-                    // Deduplicate in case origin/destination were also waypoints (unlikely with optimizeWaypoints)
-                    const uniqueOptimizedStops = Array.from(new Map(finalOrderedStops.map(item => [item.id, item])).values());
-                    resolve(uniqueOptimizedStops);
-
-                } else {
-                    console.error('Error de Directions API:', status, response);
-                    reject({ message: `Error de Google Maps Directions API: ${status}`, status });
-                }
-            });
-        });
-    } catch (error: any) {
-        console.error('Error en optimizeDeliveryRoute:', error);
-        throw error instanceof Error ? error : new Error(String(error?.message || 'Error desconocido durante la optimización de ruta.'));
+  try {
+    const google = await getGoogleMapsApi();
+    if (!google || !google.maps || !google.maps.DirectionsService) {
+      throw new Error('DirectionsService no disponible. API de Google Maps no cargada o incompleta.');
     }
+
+    const directionsService = new google.maps.DirectionsService();
+
+    if (stops.length === 2) { // Origin and Destination only, no waypoints to optimize
+      // console.log("OptimizeRoute: Only origin and destination. No waypoints to optimize.");
+      return stops;
+    }
+
+    const originStop = stops[0];
+    const destinationStop = stops[stops.length - 1];
+    const waypoints = stops.slice(1, -1).map(stop => ({
+      location: stop.location,
+      stopover: true,
+    }));
+
+    const request: google.maps.DirectionsRequest = {
+      origin: originStop.location,
+      destination: destinationStop.location,
+      waypoints: waypoints,
+      optimizeWaypoints: true,
+      travelMode: google.maps.TravelMode.DRIVING,
+    };
+
+    return new Promise((resolve, reject) => {
+      directionsService.route(request, (response, status) => {
+        if (status === google.maps.DirectionsStatus.OK && response && response.routes && response.routes.length > 0) {
+          const route = response.routes[0];
+          const optimizedWaypoints: MappableStop[] = [];
+          const originalWaypoints = stops.slice(1, -1); // Get the original waypoint objects
+
+          if (route.waypoint_order && route.waypoint_order.length > 0) {
+            route.waypoint_order.forEach(orderIndex => {
+              optimizedWaypoints.push(originalWaypoints[orderIndex]);
+            });
+          } else {
+            // If no waypoint_order, implies waypoints were not reordered or only one waypoint
+            optimizedWaypoints.push(...originalWaypoints);
+          }
+
+          const finalOrderedStops = [
+            originStop,
+            ...optimizedWaypoints,
+            destinationStop,
+          ];
+          // Basic deduplication in case origin/destination somehow ended up as waypoints (unlikely with optimizeWaypoints)
+          const uniqueOptimizedStops = Array.from(new Map(finalOrderedStops.map(item => [item.id, item])).values());
+          resolve(uniqueOptimizedStops);
+
+        } else {
+          console.error('Error de Google Maps Directions API:', status, response);
+          reject({ message: `Error de Google Maps Directions API: ${status}`, status });
+        }
+      });
+    });
+
+  } catch (error: any) {
+    console.error('Error en optimizeDeliveryRoute:', error);
+    throw error instanceof Error ? error : new Error(String(error?.message || 'Error desconocido durante la optimización de ruta.'));
+  }
 }
 
 
+// This function is a placeholder as it requires a server-only API key and direct HTTP requests
+// or a server-side Google Maps client library. It CANNOT use the JS API loader.
 export async function serverSideGeocodeAddress(address: string): Promise<GeocodeResult | null> {
-  console.warn("Server-side geocoding for \"" + address + "\" is NOT IMPLEMENTED. Esta función es un placeholder.");
+  // console.warn("Server-side geocoding for \"" + address + "\" is NOT IMPLEMENTED. Esta función es un placeholder.");
+  if (typeof window !== 'undefined') {
+    console.error("serverSideGeocodeAddress fue llamada en el cliente. Esta función es solo para servidor.");
+    return null;
+  }
+  // Actual implementation would use fetch() to Google Geocoding API Web Service
+  // e.g., const apiKey = process.env.GOOGLE_MAPS_SERVER_API_KEY; (needs to be set up)
+  // const response = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}&region=AR&components=country:AR`);
   return null;
 }
-
-    
