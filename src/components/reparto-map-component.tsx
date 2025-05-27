@@ -2,22 +2,22 @@
 "use client";
 
 import * as React from 'react';
-import type { ParadaConDetalles, Empresa, EnvioConDetalles } from '@/lib/schemas';
+import type { ParadaConDetalles, Empresa } from '@/lib/schemas';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2 } from "lucide-react"; 
+import { Loader2, AlertTriangle } from "lucide-react"; // Added AlertTriangle
 import { getGoogleMapsApi } from '@/services/google-maps-service';
 
 interface RepartoMapComponentProps {
   paradas: ParadaConDetalles[];
-  empresaOrigen?: Pick<Empresa, 'latitud' | 'longitud' | 'nombre' | 'direccion'> | null;
+  empresaOrigen?: Pick<Empresa, 'id' | 'latitud' | 'longitud' | 'nombre' | 'direccion'> | null;
   repartoId: string;
 }
 
 const API_KEY_COMPONENT = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 const MAR_DEL_PLATA_CENTER = { lat: -38.00228, lng: -57.55754 };
 
-const PICKUP_COLOR = '#1E88E5'; // Blue for Pickup
-const DELIVERY_COLOR = '#E53935'; // Red for Delivery
+const PICKUP_COLOR = '#1E88E5'; 
+const DELIVERY_COLOR = '#E53935'; 
 const DEFAULT_MARKER_COLOR = '#757575'; 
 
 export function RepartoMapComponent({ paradas, empresaOrigen, repartoId }: RepartoMapComponentProps) {
@@ -29,10 +29,13 @@ export function RepartoMapComponent({ paradas, empresaOrigen, repartoId }: Repar
   const [infoWindow, setInfoWindow] = React.useState<google.maps.InfoWindow | null>(null);
   const [isLoadingMap, setIsLoadingMap] = React.useState(true);
   const [googleMaps, setGoogleMaps] = React.useState<typeof google | null>(null);
+  const [errorLoadingApi, setErrorLoadingApi] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (!API_KEY_COMPONENT) {
-      toast({ title: "Error de Configuración", description: "Falta la clave API de Google Maps para el mapa.", variant: "destructive"});
+      const errorMsg = "Falta la clave API de Google Maps. El mapa no se puede mostrar.";
+      toast({ title: "Error de Configuración", description: errorMsg, variant: "destructive"});
+      setErrorLoadingApi(errorMsg);
       setIsLoadingMap(false);
       return;
     }
@@ -52,16 +55,20 @@ export function RepartoMapComponent({ paradas, empresaOrigen, repartoId }: Repar
         setInfoWindow(new googleApi.maps.InfoWindow());
       }
       setIsLoadingMap(false);
+      setErrorLoadingApi(null);
     }).catch(e => {
       console.error("Error loading Google Maps API in RepartoMapComponent:", e);
-      toast({ title: "Error al cargar Mapa", description: "No se pudo inicializar Google Maps.", variant: "destructive"});
+      const errorMessage = (e as Error).message || "No se pudo inicializar Google Maps.";
+      toast({ title: "Error al cargar Mapa", description: errorMessage, variant: "destructive"});
+      setErrorLoadingApi(errorMessage);
       setIsLoadingMap(false);
+      setGoogleMaps(null);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [repartoId, toast]); // Map dependency removed to avoid re-init on internal map state change
+  }, [repartoId, toast]); 
 
   React.useEffect(() => {
-    if (!map || !googleMaps?.maps?.SymbolPath || !paradas ) { 
+    if (!map || !googleMaps?.maps?.SymbolPath || !paradas || errorLoadingApi ) { 
       markers.forEach(marker => marker.setMap(null));
       setMarkers([]);
       if (polyline) polyline.setMap(null);
@@ -78,7 +85,8 @@ export function RepartoMapComponent({ paradas, empresaOrigen, repartoId }: Repar
 
     const sortedParadas = [...paradas].sort((a, b) => (a.orden_visita ?? Infinity) - (b.orden_visita ?? Infinity));
     
-    // Add empresaOrigen as the first point if it exists
+    const fixedPickupStop = sortedParadas.find(p => !p.envio_id && p.descripcion_parada?.toLowerCase().includes('retiro'));
+
     if (empresaOrigen?.latitud != null && empresaOrigen?.longitud != null) {
       const pickupPosition = { lat: empresaOrigen.latitud, lng: empresaOrigen.longitud };
       pathCoordinates.push(pickupPosition);
@@ -88,7 +96,7 @@ export function RepartoMapComponent({ paradas, empresaOrigen, repartoId }: Repar
         map,
         label: { text: "P", color: "white", fontSize: "11px", fontWeight: "bold" },
         icon: {
-          path: googleMaps.maps.SymbolPath.CIRCLE, // Using a circle for pickup
+          path: googleMaps.maps.SymbolPath.CIRCLE,
           scale: 10,
           fillColor: PICKUP_COLOR,
           fillOpacity: 1,
@@ -96,7 +104,7 @@ export function RepartoMapComponent({ paradas, empresaOrigen, repartoId }: Repar
           strokeWeight: 1.5,
         },
         title: `Retiro en: ${empresaOrigen.nombre}\n${empresaOrigen.direccion}`,
-        zIndex: 100, // Higher zIndex for pickup
+        zIndex: 100,
       });
       pickupMarker.addListener('click', () => {
         if (infoWindow) {
@@ -115,6 +123,11 @@ export function RepartoMapComponent({ paradas, empresaOrigen, repartoId }: Repar
 
 
     sortedParadas.forEach((parada) => {
+      // Skip if this is the fixed pickup stop and empresaOrigen was already mapped
+      if (fixedPickupStop && parada.id === fixedPickupStop.id && empresaOrigen) {
+        return;
+      }
+
       let position: google.maps.LatLngLiteral | null = null;
       let markerTitle = `Parada ${parada.orden_visita || 'N/A'}`;
       let infoContent = `<div style="font-family: sans-serif; padding: 5px; max-width: 250px; word-wrap: break-word;">`;
@@ -127,30 +140,24 @@ export function RepartoMapComponent({ paradas, empresaOrigen, repartoId }: Repar
         markerTitle = `Entrega: ${parada.envios.direccion_destino || 'N/A'} (Orden: ${labelText})`;
         infoContent += `<p style="margin:0 0 3px 0; font-size: 0.9em;"><strong>Envío ID:</strong> ${parada.envio_id.substring(0,8)}...</p>`;
         infoContent += `<p style="margin:0 0 3px 0; font-size: 0.9em;"><strong>Destino:</strong> ${parada.envios.direccion_destino}</p>`;
-        const clienteNombre = (parada.envios as EnvioConDetalles)?.clientes?.nombre 
-            ? `${(parada.envios as EnvioConDetalles)?.clientes?.apellido}, ${(parada.envios as EnvioConDetalles)?.clientes?.nombre}` 
-            : (parada.envios as EnvioConDetalles)?.cliente_temporal_nombre;
+        const clienteNombre = parada.envios.clientes?.nombre 
+            ? `${parada.envios.clientes.apellido}, ${parada.envios.clientes.nombre}` 
+            : parada.envios.cliente_temporal_nombre;
         if (clienteNombre) {
           infoContent += `<p style="margin:0 0 3px 0; font-size: 0.9em;"><strong>Cliente:</strong> ${clienteNombre}</p>`;
         }
         infoContent += `<p style="margin:0 0 3px 0; font-size: 0.9em;"><strong>Estado:</strong> ${parada.estado_parada || 'N/A'}</p>`;
         markerColor = DELIVERY_COLOR;
-      } else if (!parada.envio_id && parada.descripcion_parada && !empresaOrigen) { // Generic non-envio stop, not the main empresaOrigen
-        // This case needs coordinates on parada_reparto itself, or geocode parada.descripcion_parada
-        // For now, it won't be mapped if it doesn't have its own coordinates and isn't the main empresa pickup
-        console.warn("Parada sin envío y sin ser origen de empresa no se mapea:", parada.descripcion_parada);
+      } else if (!parada.envio_id && parada.descripcion_parada) { 
+        // This is for other custom stops, if they had coordinates directly on parada_reparto (not currently implemented)
+        // For now, only fixedPickupStop (via empresaOrigen) or envio_id stops get mapped.
+        console.warn("Parada sin envío no se mapea a menos que sea el origen de empresa:", parada.descripcion_parada);
       }
       
       infoContent += `</div>`;
 
       if (position) {
-        if (!pathCoordinates.some(p => p.lat === position!.lat && p.lng === position!.lng) || !empresaOrigen) {
-             // Only add to path if it's not the same as a previously added empresaOrigen (to avoid a 0-length segment at start if first delivery is empresa)
-             // Or if there is no empresaOrigen, all delivery points are added.
-            if (!(empresaOrigen?.latitud === position.lat && empresaOrigen?.longitud === position.lng)){
-                pathCoordinates.push(position);
-            }
-        }
+        pathCoordinates.push(position);
         bounds.extend(position);
 
         const marker = new googleMaps.maps.Marker({
@@ -184,7 +191,7 @@ export function RepartoMapComponent({ paradas, empresaOrigen, repartoId }: Repar
       const newPolyline = new googleMaps.maps.Polyline({
         path: pathCoordinates,
         geodesic: true,
-        strokeColor: '#007bff', // Blue for route
+        strokeColor: '#007bff', 
         strokeOpacity: 0.7,
         strokeWeight: 4,
         icons: [{
@@ -205,13 +212,13 @@ export function RepartoMapComponent({ paradas, empresaOrigen, repartoId }: Repar
       if (newMarkers.length === 1 && map.getZoom() && map.getZoom() > 15) { 
         map.setZoom(15);
       }
-    } else if (map) { // map might still be null if API is not ready
+    } else if (map) { 
        map.setCenter(MAR_DEL_PLATA_CENTER);
        map.setZoom(12);
     }
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, googleMaps, paradas, empresaOrigen, infoWindow]); // Removed toast from deps
+  }, [map, googleMaps, paradas, empresaOrigen, infoWindow, errorLoadingApi]); 
 
   if (isLoadingMap && API_KEY_COMPONENT) {
     return (
@@ -222,20 +229,26 @@ export function RepartoMapComponent({ paradas, empresaOrigen, repartoId }: Repar
     );
   }
   
-  if (!API_KEY_COMPONENT) {
+  if (!API_KEY_COMPONENT || errorLoadingApi) {
      return (
-      <div className="w-full h-full flex justify-center items-center bg-destructive/10 rounded-md p-4 text-center aspect-video">
-        <p className="text-destructive text-sm">La API Key de Google Maps no está configurada. El mapa no se puede mostrar.</p>
+      <div className="w-full h-full flex flex-col justify-center items-center bg-destructive/10 rounded-md p-4 text-center aspect-video">
+        <AlertTriangle className="h-12 w-12 text-destructive mb-2" />
+        <p className="text-destructive font-semibold">Error al cargar el mapa</p>
+        <p className="text-destructive/80 text-sm mt-1">{errorLoadingApi || "La API Key de Google Maps no está configurada."}</p>
       </div>
     );
   }
-   if (!map && !isLoadingMap) {
+  
+   if (!map || !googleMaps) { 
     return (
       <div className="w-full h-full flex justify-center items-center bg-muted/50 rounded-md aspect-video">
-        <p className="text-destructive-foreground text-sm">No se pudo cargar el mapa. Verifique la consola.</p>
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="ml-2 text-muted-foreground">Inicializando mapa...</p>
       </div>
     );
   }
 
   return <div ref={mapRef} className="w-full h-full rounded-md shadow-sm" />;
 }
+
+    
