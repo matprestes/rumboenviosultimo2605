@@ -1,0 +1,165 @@
+
+"use client";
+
+import * as React from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Truck, PlusCircle, Loader2, Edit, Trash2, DollarSign, Settings } from "lucide-react";
+import type { TipoServicio } from '@/lib/schemas';
+import { getTiposServicioAction, deleteTipoServicioAction } from '@/actions/tipos-servicio.actions';
+import { useToast } from '@/hooks/use-toast';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
+
+export default function TiposServicioPage() {
+  const { toast } = useToast();
+  const router = useRouter();
+  const [tiposServicio, setTiposServicio] = React.useState<TipoServicio[]>([]);
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [isDeleting, setIsDeleting] = React.useState(false);
+  const [itemToDelete, setItemToDelete] = React.useState<TipoServicio | null>(null);
+
+  const fetchItems = React.useCallback(async () => {
+    setIsLoading(true);
+    const { tiposServicio: data, error } = await getTiposServicioAction();
+    if (error) {
+      toast({ title: "Error al Cargar Tipos de Servicio", description: error, variant: "destructive" });
+      setTiposServicio([]);
+    } else {
+      setTiposServicio(data || []);
+    }
+    setIsLoading(false);
+  }, [toast]);
+
+  React.useEffect(() => {
+    fetchItems();
+  }, [fetchItems]);
+
+  const handleDeleteConfirm = async () => {
+    if (!itemToDelete || !itemToDelete.id) return;
+    setIsDeleting(true);
+    const result = await deleteTipoServicioAction(itemToDelete.id);
+    setIsDeleting(false);
+    if (result.success) {
+      toast({ title: "Tipo de Servicio Eliminado", description: `"${itemToDelete.nombre}" ha sido eliminado.` });
+      setItemToDelete(null);
+      fetchItems();
+    } else {
+      toast({ title: "Error al Eliminar", description: result.error, variant: "destructive" });
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <header className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-primary flex items-center gap-2">
+            <Truck size={32} />
+            Gestión de Tipos de Servicio
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            Administra los servicios ofrecidos y sus precios base.
+          </p>
+        </div>
+        <Button asChild>
+          <Link href="/configuracion/tipos-servicio/nuevo">
+            <PlusCircle className="mr-2 h-4 w-4" />
+            Nuevo Tipo de Servicio
+          </Link>
+        </Button>
+      </header>
+      
+      <AlertDialog open={!!itemToDelete} onOpenChange={(isOpen) => !isOpen && setItemToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar "{itemToDelete?.nombre}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción no se puede deshacer. Se eliminará permanentemente este tipo de servicio.
+              Asegúrese de que no esté siendo utilizado en envíos existentes o tenga tarifas asociadas.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
+            <Button onClick={handleDeleteConfirm} disabled={isDeleting} variant="destructive">
+              {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Eliminar
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Card className="rounded-2xl shadow-sm">
+        <CardHeader>
+          <CardTitle>Listado de Tipos de Servicio</CardTitle>
+          <CardDescription>
+            Visualiza, crea, edita y elimina los tipos de servicio.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="flex justify-center items-center h-64">
+              <Loader2 className="h-16 w-16 animate-spin text-primary" />
+            </div>
+          ) : tiposServicio.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-64 border-2 border-dashed border-border rounded-lg bg-muted/20">
+              <Truck className="w-16 h-16 text-muted-foreground mb-4" />
+              <p className="text-muted-foreground">No hay tipos de servicio registrados.</p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nombre</TableHead>
+                  <TableHead>Descripción</TableHead>
+                  <TableHead>Precio Base</TableHead>
+                  <TableHead className="text-right">Acciones</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {tiposServicio.map((item) => (
+                  <TableRow key={item.id}>
+                    <TableCell className="font-medium">{item.nombre}</TableCell>
+                    <TableCell>{item.descripcion || '-'}</TableCell>
+                    <TableCell>
+                      {item.precio_base !== null && item.precio_base !== undefined 
+                        ? `$${Number(item.precio_base).toFixed(2)}` 
+                        : '-'}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button variant="outline" size="sm" asChild className="mr-2">
+                        <Link href={`/configuracion/tipos-servicio/${item.id}/tarifas`}>
+                          <DollarSign className="h-4 w-4 mr-1" /> Tarifas
+                        </Link>
+                      </Button>
+                      <Button variant="ghost" size="icon" asChild title="Editar">
+                        <Link href={`/configuracion/tipos-servicio/${item.id}/editar`}><Edit className="h-4 w-4" /></Link>
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => setItemToDelete(item)} title="Eliminar">
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+    

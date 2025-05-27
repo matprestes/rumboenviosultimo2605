@@ -29,6 +29,11 @@ export const EstadoRepartoEnum = z.enum([
 });
 export type EstadoReparto = z.infer<typeof EstadoRepartoEnum>;
 
+export const TipoServicioCalculadoraEnum = z.enum(['express', 'lowcost'], {
+  errorMap: () => ({ message: "Seleccione un tipo de servicio para la calculadora válido." }),
+});
+export type TipoServicioCalculadora = z.infer<typeof TipoServicioCalculadoraEnum>;
+
 
 // --- Empresa Schemas ---
 export const EmpresaSchema = z.object({
@@ -102,7 +107,7 @@ export const TipoServicioSchema = z.object({
   descripcion: z.string().optional().nullable().default(""),
   precio_base: z.preprocess(
     (val) => (val === "" || val === null || val === undefined ? null : parseFloat(String(val))),
-    z.number().min(0, "El precio base no puede ser negativo.").nullable().optional()
+    z.number().min(0, "El precio base no puede ser negativo.").nullable().optional().default(null)
   ),
   created_at: z.string().datetime().optional(),
   updated_at: z.string().datetime().optional(),
@@ -112,14 +117,52 @@ export type TipoServicio = z.infer<typeof TipoServicioSchema>;
 export type TipoServicioFormValues = Omit<TipoServicio, 'id' | 'created_at' | 'updated_at' | 'user_id'>;
 
 
+// --- TarifaDistanciaCalculadora Schemas ---
+export const TarifaDistanciaCalculadoraSchema = z.object({
+  id: z.string().uuid().optional(),
+  tipo_servicio_id: z.string().uuid("Debe seleccionar un tipo de servicio."), // Foreign key to tipos_servicio
+  distancia_min_km: z.preprocess(
+    (val) => parseFloat(String(val)),
+    z.number().min(0, "La distancia mínima no puede ser negativa.")
+  ),
+  distancia_max_km: z.preprocess(
+    (val) => parseFloat(String(val)),
+    z.number().positive("La distancia máxima debe ser un número positivo.")
+  ),
+  precio_base: z.preprocess(
+    (val) => (val === "" || val === null || val === undefined ? null : parseFloat(String(val))),
+    z.number().min(0, "El precio base no puede ser negativo.").nullable().optional().default(null)
+  ),
+  precio_por_km: z.preprocess(
+    (val) => parseFloat(String(val)),
+    z.number().positive("El precio por km debe ser un número positivo.")
+  ),
+  created_at: z.string().datetime().optional(),
+  updated_at: z.string().datetime().optional(),
+  user_id: z.string().uuid().nullable().optional(),
+}).superRefine((data, ctx) => {
+  if (data.distancia_min_km >= data.distancia_max_km) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "La distancia mínima debe ser menor que la distancia máxima.",
+      path: ["distancia_max_km"],
+    });
+  }
+});
+export type TarifaDistanciaCalculadora = z.infer<typeof TarifaDistanciaCalculadoraSchema>;
+export type TarifaDistanciaFormValues = Omit<TarifaDistanciaCalculadora, 'id' | 'created_at' | 'updated_at' | 'user_id' | 'tipo_servicio'> & {
+    tipo_servicio?: TipoServicioCalculadora; // This field seems to be from the DB enum, not directly on the form for creation/update via TipoServicio ID
+};
+
+
 // --- Envío Schemas ---
-const timeRegex = /^(?:[01]\d|2[0-3]):(?:[0-5]\d)$/; // HH:MM format, stricter
+const timeRegex = /^(?:[01]\d|2[0-3]):(?:[0-5]\d)$/; // HH:MM format
 
 export const EnvioBaseSchema = z.object({
   id: z.string().uuid().optional(),
   remitente_cliente_id: z.string().uuid({ message: "Debe seleccionar un cliente remitente." }).nullable().optional(),
-  nombre_destinatario: z.string().min(3, "El nombre del destinatario es requerido.").optional().nullable(),
-  telefono_destinatario: z.string().min(7, "El teléfono del destinatario es requerido.").optional().nullable(),
+  nombre_destinatario: z.string().min(3, "El nombre del destinatario es requerido.").optional().nullable().default(""),
+  telefono_destinatario: z.string().min(7, "El teléfono del destinatario es requerido.").optional().nullable().default(""),
   cliente_temporal_nombre: z.string().min(3, "El nombre del cliente temporal es requerido.").nullable().optional().default(""),
   cliente_temporal_telefono: z.string().min(7, "El teléfono del cliente temporal es requerido.").nullable().optional().default(""),
   direccion_origen: z.string().min(5, "La dirección de origen es requerida."),
@@ -139,21 +182,21 @@ export const EnvioBaseSchema = z.object({
       const num = parseFloat(String(val));
       return isNaN(num) ? null : num;
     },
-    z.number().positive("El peso debe ser un número positivo.").nullable().optional()
+    z.number().positive("El peso debe ser un número positivo.").nullable().optional().default(null)
   ),
   tipo_servicio_id: z.string().uuid({ message: "Debe seleccionar un tipo de servicio."}),
   precio: z.preprocess(
     (val) => {
-      if (val === "" || val === null || val === undefined) return 0; // Default to 0 for empty or null
+      if (val === "" || val === null || val === undefined) return 0;
       const num = parseFloat(String(val));
-      return isNaN(num) ? 0 : num; // Default to 0 if parsing fails
+      return isNaN(num) ? 0 : num;
     },
-    z.number().min(0, "El precio no puede ser negativo.")
+    z.number().min(0, "El precio no puede ser negativo.").default(0)
   ),
   estado: EstadoEnvioEnum.default('pendiente_asignacion'),
   fecha_estimada_entrega: z.date().nullable().optional(),
-  horario_retiro_desde: z.string().regex(timeRegex, "Formato HH:MM inválido.").nullable().optional().default(""),
-  horario_entrega_hasta: z.string().regex(timeRegex, "Formato HH:MM inválido.").nullable().optional().default(""),
+  horario_retiro_desde: z.string().regex(timeRegex, "Formato HH:MM inválido para retiro.").nullable().optional().default(""),
+  horario_entrega_hasta: z.string().regex(timeRegex, "Formato HH:MM inválido para entrega.").nullable().optional().default(""),
   repartidor_asignado_id: z.string().uuid().nullable().optional(),
   notas_conductor: z.string().nullable().optional().default(""),
   detalles_adicionales: z.string().nullable().optional().default(""),
@@ -184,12 +227,7 @@ export const EnvioSchema = EnvioBaseSchema.superRefine((data, ctx) => {
       path: ["nombre_destinatario"],
     });
   }
-  if (data.horario_retiro_desde && !timeRegex.test(data.horario_retiro_desde)) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Formato HH:MM inválido para retiro.", path: ["horario_retiro_desde"] });
-  }
-  if (data.horario_entrega_hasta && !timeRegex.test(data.horario_entrega_hasta)) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Formato HH:MM inválido para entrega.", path: ["horario_entrega_hasta"] });
-  }
+  // horario_retiro_desde and horario_entrega_hasta are already validated by regex at field level
 });
 export type Envio = z.infer<typeof EnvioSchema>;
 
@@ -198,15 +236,15 @@ export const DosRuedasEnvioFormSchema = z.object({
   nombre_destinatario: z.string().min(3, "El nombre del destinatario es requerido."),
   telefono_destinatario: z.string().min(7, "El teléfono del destinatario es requerido."),
   direccion_destino: z.string().min(5, "La dirección de entrega es requerida."),
-  horario_retiro_desde: z.string().regex(timeRegex, "Formato HH:MM inválido.").optional().nullable().default(""),
-  horario_entrega_hasta: z.string().regex(timeRegex, "Formato HH:MM inválido.").optional().nullable().default(""),
+  horario_retiro_desde: z.string().regex(timeRegex, "Formato HH:MM inválido para retiro.").optional().nullable().default(""),
+  horario_entrega_hasta: z.string().regex(timeRegex, "Formato HH:MM inválido para entrega.").optional().nullable().default(""),
   precio: z.preprocess(
     (val) => {
       if (val === "" || val === null || val === undefined) return 0;
       const num = parseFloat(String(val));
       return isNaN(num) ? 0 : num;
     },
-    z.number().min(0, "El monto a cobrar no puede ser negativo.")
+    z.number().min(0, "El monto a cobrar no puede ser negativo.").default(0)
   ),
   detalles_adicionales: z.string().optional().nullable().default(""),
 });
@@ -279,7 +317,7 @@ export const RepartoLoteClientAssignmentSchema = z.object({
       const num = parseFloat(String(val));
       return isNaN(num) ? 0 : num;
     },
-    z.number().min(0, "El precio debe ser 0 o mayor.")
+    z.number().min(0, "El precio debe ser 0 o mayor.").default(0)
   ),
   notas_envio: z.string().optional().nullable().default(""),
 });

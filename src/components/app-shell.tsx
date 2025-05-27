@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/sidebar';
 import { Sheet, SheetContent, SheetHeader as UiSheetHeader, SheetTitle as UiSheetTitle } from "@/components/ui/sheet"; 
 import { Button } from '@/components/ui/button';
-import { Home, Building2, Users, Truck, Package, ClipboardList, MapIcon, Settings, ShipWheel, Route, ClipboardPlus, Layers, ChevronRight, Box } from 'lucide-react';
+import { Home, Building2, Users, Truck, Package, ClipboardList, MapIcon, Settings, ShipWheel, Route, ClipboardPlus, Layers, ChevronRight, Box, DollarSignIcon } from 'lucide-react';
 import { Separator } from './ui/separator';
 import { cn } from "@/lib/utils";
 
@@ -45,9 +45,7 @@ const navItems = [
     icon: Settings,
     subItems: [
         { href: '/configuracion/tipos-paquete', label: 'Tipos de Paquete', icon: Box },
-        // Futuros items:
-        // { href: '/configuracion/tipos-servicio', label: 'Tipos de Servicio', icon: Truck },
-        // { href: '/configuracion/tarifas', label: 'Tarifas', icon: DollarSignIcon },
+        { href: '/configuracion/tipos-servicio', label: 'Tipos de Servicio y Tarifas', icon: DollarSignIcon },
     ]
   },
 ];
@@ -58,8 +56,8 @@ function MainNavigation() {
   const [openSubMenus, setOpenSubMenus] = React.useState<Record<string, boolean>>(() => {
     const initialOpen: Record<string, boolean> = {};
     navItems.forEach(item => {
-      if (item.subItems && item.subItems.some(sub => pathname === sub.href || (sub.href !== "/" && pathname.startsWith(sub.href)))) {
-        initialOpen[item.label] = true;
+      if (item.subItems && item.subItems.some(sub => pathname === sub.href || (sub.href !== "/" && pathname.startsWith(sub.href!)))) {
+        initialOpen[item.label!] = true;
       }
     });
     return initialOpen;
@@ -71,11 +69,10 @@ function MainNavigation() {
 
   React.useEffect(() => {
     if (!open && !isMobile) {
-      // Conservar el estado del submenú si un hijo está activo
       const activeSubMenus: Record<string, boolean> = {};
       navItems.forEach(item => {
-        if (item.subItems && item.subItems.some(sub => pathname === sub.href || (sub.href !== "/" && pathname.startsWith(sub.href)))) {
-          activeSubMenus[item.label] = true;
+        if (item.subItems && item.subItems.some(sub => pathname === sub.href || (sub.href !== "/" && pathname.startsWith(sub.href!)))) {
+          activeSubMenus[item.label!] = true;
         }
       });
       setOpenSubMenus(prev => ({...prev, ...activeSubMenus}));
@@ -88,27 +85,27 @@ function MainNavigation() {
         if (item.type === 'separator') {
           return <Separator key={`sep-${index}`} className="my-2" />;
         }
-        const Icon = item.icon;
-        const isActiveParent = item.subItems?.some(sub => pathname === sub.href || (sub.href !== "/" && pathname.startsWith(sub.href)));
+        const Icon = item.icon!;
+        const isActiveParent = item.subItems?.some(sub => pathname === sub.href || (sub.href !== "/" && pathname.startsWith(sub.href!)));
 
         if (item.subItems) {
           return (
             <SidebarMenuItem key={item.label} className="flex flex-col items-start">
               <SidebarMenuButton
-                onClick={() => toggleSubMenu(item.label)}
+                onClick={() => toggleSubMenu(item.label!)}
                 isActive={!!isActiveParent}
                 className="w-full"
                 tooltip={open ? undefined : item.label}
               >
                 <Icon />
                 <span>{item.label}</span>
-                <ChevronRight className={cn("ml-auto h-4 w-4 transform transition-transform duration-200", openSubMenus[item.label] && "rotate-90")} />
+                <ChevronRight className={cn("ml-auto h-4 w-4 transform transition-transform duration-200", openSubMenus[item.label!] && "rotate-90")} />
               </SidebarMenuButton>
-              {(openSubMenus[item.label] || (open && !isMobile && isActiveParent)) && (
-                 <SidebarMenu className={cn("ml-0 pl-0 mt-1 w-full", (!open && !isMobile) && "hidden")}>
+              {(openSubMenus[item.label!] || (open && !isMobile && isActiveParent)) && (
+                 <SidebarMenu className={cn("ml-0 pl-0 mt-1 w-full", (!open && !isMobile) && "!hidden")}>
                   {item.subItems.map(subItem => {
-                     const SubIcon = subItem.icon;
-                     const isSubItemActive = pathname === subItem.href || (subItem.href !== "/" && pathname.startsWith(subItem.href));
+                     const SubIcon = subItem.icon!;
+                     const isSubItemActive = pathname === subItem.href || (subItem.href !== "/" && pathname.startsWith(subItem.href!));
                      return (
                         <SidebarMenuItem key={subItem.href}>
                         <SidebarMenuButton
@@ -117,7 +114,7 @@ function MainNavigation() {
                             className="pl-7" 
                             tooltip={open ? undefined : subItem.label}
                         >
-                            <Link href={subItem.href}>
+                            <Link href={subItem.href!}>
                                 <SubIcon />
                                 <span>{subItem.label}</span>
                             </Link>
@@ -135,10 +132,10 @@ function MainNavigation() {
           <SidebarMenuItem key={item.href}>
             <SidebarMenuButton
               asChild
-              isActive={pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href))}
+              isActive={pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href!))}
               tooltip={open ? undefined : item.label}
             >
-              <Link href={item.href}>
+              <Link href={item.href!}>
                 <Icon />
                 <span>{item.label}</span>
               </Link>
@@ -155,6 +152,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <SidebarProvider defaultOpen={true}>
       <Sidebar>
         <SidebarHeader className="p-4">
+          {/* <SheetTitle className="sr-only">Menú Principal Rumbos Envíos</SheetTitle> */}
           <div className="flex items-center gap-2">
             <ShipWheel className="h-8 w-8 text-primary" />
             <div className="flex flex-col">
