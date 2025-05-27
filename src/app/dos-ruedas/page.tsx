@@ -4,12 +4,11 @@
 import * as React from 'react';
 import { DosRuedasEnvioForm } from '@/components/forms/dos-ruedas-envio-form';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Loader2, ShipWheel } from 'lucide-react';
-import { createEnvioAction, getClientesForSelect } from '@/actions/envio-actions';
-import type { DosRuedasEnvioFormValues, Cliente } from '@/lib/schemas';
+import { Loader2, ShipWheel, PackageSearch } from 'lucide-react'; // Changed PackageQuestion to PackageSearch
+import { createEnvioAction, getClientesForSelect, getTiposServicioForSelect } from '@/actions/envio-actions';
+import type { DosRuedasEnvioFormValues, Cliente, TipoServicio } from '@/lib/schemas';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation'; 
-import { supabase } from '@/lib/supabase/client'; // Import supabase for direct calls if needed elsewhere, but not for this specific redundant call
 
 export default function DosRuedasPage() {
   const { toast } = useToast();
@@ -17,27 +16,29 @@ export default function DosRuedasPage() {
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [isLoadingData, setIsLoadingData] = React.useState(true);
   const [clientes, setClientes] = React.useState<Pick<Cliente, 'id' | 'nombre' | 'apellido' | 'direccion' | 'telefono' | 'latitud' | 'longitud'>[]>([]);
+  const [tiposServicio, setTiposServicio] = React.useState<TipoServicio[]>([]);
 
   React.useEffect(() => {
     async function loadInitialData() {
       setIsLoadingData(true);
       try {
-        // getClientesForSelect already fetches all necessary client details
-        const clientesData = await getClientesForSelect();
+        const [clientesData, serviciosData] = await Promise.all([
+          getClientesForSelect(),
+          getTiposServicioForSelect()
+        ]);
         
-        if (!clientesData) { // Or check if it's an empty array and handle as needed
-          throw new Error("No se pudieron cargar los datos de los clientes.");
-        }
-        setClientes(clientesData);
+        setClientes(clientesData || []);
+        setTiposServicio(serviciosData || []);
 
       } catch (error: any) {
         console.error("Error loading initial data for Dos Ruedas form:", error);
         toast({ 
             title: "Error al Cargar Datos", 
-            description: error.message || "No se pudieron cargar los clientes para el formulario.", 
+            description: error.message || "No se pudieron cargar los datos necesarios para el formulario.", 
             variant: "destructive" 
         });
-        setClientes([]); // Ensure clientes is an empty array on error
+        setClientes([]); 
+        setTiposServicio([]);
       } finally {
         setIsLoadingData(false);
       }
@@ -51,7 +52,7 @@ export default function DosRuedasPage() {
     setIsSubmitting(false);
     if (result.success && result.data) {
       toast({ title: "Pedido Recibido", description: `Tu pedido ID ${result.data.id?.substring(0,8)}... ha sido creado. Un operador se contactará.` });
-      // form.reset(); // This would need the form instance passed down or context
+      // Form reset is handled within DosRuedasEnvioForm if needed or can be triggered here
     } else {
       toast({ title: "Error al Crear Pedido", description: result.error || "Ocurrió un error inesperado.", variant: "destructive" });
     }
@@ -66,7 +67,7 @@ export default function DosRuedasPage() {
           Mensajería Envíos DosRuedas
         </h1>
       </div>
-      <Card className="shadow-xl">
+      <Card className="shadow-xl rounded-2xl">
         <CardHeader>
           <CardTitle>Nuevo Pedido</CardTitle>
           <CardDescription>Completa los datos para realizar tu envío.</CardDescription>
@@ -75,18 +76,19 @@ export default function DosRuedasPage() {
           {isLoadingData ? (
             <div className="flex justify-center items-center h-64">
               <Loader2 className="h-12 w-12 animate-spin text-primary" />
-              <p className="ml-3 text-muted-foreground">Cargando clientes...</p>
+              <p className="ml-3 text-muted-foreground">Cargando datos del formulario...</p>
             </div>
           ) : (
             <DosRuedasEnvioForm
               onSubmit={handleCreateDosRuedasEnvio}
               clientes={clientes}
+              tiposServicio={tiposServicio}
               isSubmitting={isSubmitting}
               setIsSubmitting={setIsSubmitting}
             />
           )}
            <p className="text-sm text-muted-foreground mt-6 text-center">
-            Una vez recibido el pedido, un operador se comunicará vía WhatsApp para informar valor y compartir el seguimiento.
+            Una vez recibido el pedido, un operador se comunicará vía WhatsApp para informar valor y compartir el seguimiento. El precio final se calculará en base al servicio y distancia.
           </p>
         </CardContent>
       </Card>

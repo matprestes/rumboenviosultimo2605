@@ -51,6 +51,12 @@ export async function createEnvioAction(
         if (!remitenteData.latitud || !remitenteData.longitud) {
             return { success: false, error: "El remitente \"" + remitenteData.nombre + " " + remitenteData.apellido + "\" no tiene coordenadas geocodificadas. Actualice los datos del cliente." };
         }
+        
+        // For DosRuedas, tipo_servicio_id is now part of the form
+        if (!dosRuedasData.tipo_servicio_id) {
+            return { success: false, error: "Debe seleccionar un tipo de servicio." };
+        }
+
 
         dataToInsert = {
             remitente_cliente_id: dosRuedasData.remitente_cliente_id,
@@ -59,45 +65,38 @@ export async function createEnvioAction(
             longitud_origen: remitenteData.longitud,
             nombre_destinatario: dosRuedasData.nombre_destinatario,
             telefono_destinatario: dosRuedasData.telefono_destinatario,
-            direccion_destino: dosRuedasData.direccion_destino, // Client should provide geocoded version if possible
-            // latitud_destino and longitud_destino should ideally come pre-geocoded from client for this form type
-            // OR, if not, implement robust server-side geocoding here.
-            // For now, we assume client-side form tries to geocode it first.
-            // If not provided, it will be null.
-            latitud_destino: null, // Placeholder, client should fill via its geocoding
-            longitud_destino: null, // Placeholder
-            horario_retiro_desde: dosRuedasData.horario_retiro_desde,
-            horario_entrega_hasta: dosRuedasData.horario_entrega_hasta,
-            precio: dosRuedasData.precio,
-            detalles_adicionales: dosRuedasData.detalles_adicionales,
+            direccion_destino: dosRuedasData.direccion_destino,
+            tipo_servicio_id: dosRuedasData.tipo_servicio_id,
+            horario_retiro_desde: dosRuedasData.horario_retiro_desde || null,
+            horario_entrega_hasta: dosRuedasData.horario_entrega_hasta || null,
+            precio: dosRuedasData.precio, // This price is now 0/placeholder from form
+            detalles_adicionales: dosRuedasData.detalles_adicionales || null,
             estado: 'pendiente_asignacion',
             user_id: currentUserId,
+            latitud_destino: null, // Placeholder, client should fill via its geocoding
+            longitud_destino: null, // Placeholder
         };
         
-        // For DosRuedas, rely on client-side geocoding. If server-side geocoding for destination is needed here
-        // (e.g. if client-side form couldn't do it), implement proper server-side call.
-        // For now, we'll just use the address as is, assuming client-side did its best.
-        // A proper server-side geocode would be needed here if client values are missing/untrusted.
         if (dosRuedasData.direccion_destino && (!dataToInsert.latitud_destino || !dataToInsert.longitud_destino)) {
             const geocodedDestination = await serverSideGeocodeAddress(dosRuedasData.direccion_destino);
             if (geocodedDestination) {
                dataToInsert.latitud_destino = geocodedDestination.lat;
                dataToInsert.longitud_destino = geocodedDestination.lng;
-               dataToInsert.direccion_destino = geocodedDestination.formattedAddress; // Update with formatted address
+               dataToInsert.direccion_destino = geocodedDestination.formattedAddress;
             } else {
                 console.warn("Server-side geocoding failed for destination in createEnvioAction (DosRuedas): " + dosRuedasData.direccion_destino);
-                // Proceeding without coordinates for destination if server-side geocoding fails
             }
         }
 
-
         const { data: defaultPaquete, error: paqueteError } = await supabase.from('tipos_paquete').select('id').limit(1).single();
-        if (paqueteError || !defaultPaquete) return { success: false, error: "No se pudo encontrar un tipo de paquete por defecto." };
-        dataToInsert.tipo_paquete_id = defaultPaquete.id;
+        if (paqueteError || !defaultPaquete) {
+            // Don't fail if no default package, make it nullable or handle gracefully
+             dataToInsert.tipo_paquete_id = null; // Or a specific known ID for 'default/undefined'
+             console.warn("No se pudo encontrar un tipo de paquete por defecto para envío DosRuedas. Asignando NULL.");
+        } else {
+            dataToInsert.tipo_paquete_id = defaultPaquete.id;
+        }
 
-        const { data: defaultServicio, error: servicioError } = await supabase.from('tipos_servicio').select('id').limit(1).single();
-        if (servicioError || !defaultServicio) return { success: false, error: "No se pudo encontrar un tipo de servicio por defecto." };
-        dataToInsert.tipo_servicio_id = defaultServicio.id;
 
     } else { // Handle full Envio form (internal)
         const fullEnvioData = formData as Envio;
@@ -107,8 +106,6 @@ export async function createEnvioAction(
         }
         let internalData = validatedFields.data;
 
-        // For internal form, client-side form is responsible for geocoding and passing lat/lng.
-        // Server actions should not rely on client-side JS API loader.
         if (!internalData.latitud_origen || !internalData.longitud_origen) {
             console.warn("Envío creado sin coordenadas de origen para: " + internalData.direccion_origen + ". Asegúrese que el cliente geocodifique.");
         }
@@ -146,7 +143,6 @@ export async function updateEnvioAction(id: string, formData: Envio): Promise<{ 
   }
   let { data } = validatedFields;
 
-  // Client-side form is responsible for geocoding if addresses change.
   if ((formData.direccion_origen !== data.direccion_origen || !data.latitud_origen || !data.longitud_origen) && data.direccion_origen) {
     console.warn("Actualizando envío " + id + ". Dirección de origen cambiada o sin coordenadas: " + data.direccion_origen + ". Asegúrese que el cliente geocodifique.");
   }
@@ -308,4 +304,3 @@ export async function deleteEnvioAction(id: string): Promise<{ success: boolean;
   revalidatePath('/dos-ruedas');
   return { success: true };
 }
-

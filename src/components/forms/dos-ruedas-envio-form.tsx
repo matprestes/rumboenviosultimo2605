@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { DosRuedasEnvioFormSchema, type DosRuedasEnvioFormValues, type Cliente } from '@/lib/schemas';
+import { DosRuedasEnvioFormSchema, type DosRuedasEnvioFormValues, type Cliente, type TipoServicio } from '@/lib/schemas';
 import { Button } from '@/components/ui/button';
 import {
   Form,
@@ -24,14 +24,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Loader2, MapPin, CheckCircle, AlertTriangle, User } from 'lucide-react';
+import { Loader2, MapPin, CheckCircle, AlertTriangle, User, Truck } from 'lucide-react';
 import { geocodeAddress, type GeocodeResult, getGoogleMapsApi } from '@/services/google-maps-service';
 import { useToast } from '@/hooks/use-toast';
-import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'; // Corrected CardDescription import
+import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 
 interface DosRuedasEnvioFormProps {
   onSubmit: (data: DosRuedasEnvioFormValues) => Promise<{ success: boolean; error?: string; data?: any }>;
   clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido' | 'direccion' | 'telefono' | 'latitud' | 'longitud'>[];
+  tiposServicio: TipoServicio[];
   isSubmitting: boolean;
   setIsSubmitting: (isSubmitting: boolean) => void;
 }
@@ -39,6 +40,7 @@ interface DosRuedasEnvioFormProps {
 export function DosRuedasEnvioForm({
   onSubmit,
   clientes,
+  tiposServicio,
   isSubmitting,
   setIsSubmitting,
 }: DosRuedasEnvioFormProps) {
@@ -56,9 +58,10 @@ export function DosRuedasEnvioForm({
       nombre_destinatario: '',
       telefono_destinatario: '',
       direccion_destino: '',
+      tipo_servicio_id: tiposServicio.length > 0 ? tiposServicio[0].id : '',
       horario_retiro_desde: "",
       horario_entrega_hasta: "",
-      precio: 0,
+      precio: 0, // Will be calculated, made read-only
       detalles_adicionales: "",
     },
   });
@@ -76,15 +79,38 @@ export function DosRuedasEnvioForm({
       });
   }, [toast]);
 
-  const handleSenderChange = (clienteId: string) => {
-    const cliente = clientes.find(c => c.id === clienteId);
+  const selectedSenderId = form.watch('remitente_cliente_id');
+  const selectedTipoServicioId = form.watch('tipo_servicio_id');
+
+  React.useEffect(() => {
+    const cliente = clientes.find(c => c.id === selectedSenderId);
     setSelectedSender(cliente || null);
-    if (cliente) {
-      form.setValue('remitente_cliente_id', cliente.id!, { shouldValidate: true });
-    } else {
-      form.setValue('remitente_cliente_id', '', { shouldValidate: true });
+  }, [selectedSenderId, clientes]);
+
+  // Placeholder for price calculation logic
+  React.useEffect(() => {
+    if (selectedSender && selectedSender.latitud && selectedSender.longitud && 
+        geocodedDest && geocodedDest.lat && geocodedDest.lng && 
+        selectedTipoServicioId) {
+      // TODO: Implement actual price calculation here
+      // 1. Calculate distance (Haversine or Google Distance Matrix)
+      // 2. Fetch tariffs for selectedTipoServicioId
+      // 3. Apply logic to find matching tariff and calculate price
+      console.log("Trigger price calculation for:", {
+        sender: selectedSender.direccion,
+        recipient: geocodedDest.formattedAddress,
+        service: selectedTipoServicioId,
+      });
+      // For now, just set a placeholder or keep it 0
+      form.setValue('precio', 0); // Or some calculated placeholder
+      toast({
+        title: "Precio Estimado",
+        description: "El cálculo automático de precio se implementará aquí.",
+        variant: "default"
+      })
     }
-  };
+  }, [selectedSender, geocodedDest, selectedTipoServicioId, form, toast]);
+
 
   const handleGeocodeDest = async () => {
     if (!isMapsApiReady) {
@@ -119,15 +145,25 @@ export function DosRuedasEnvioForm({
         toast({title: "Error de Remitente", description: "Por favor, seleccione un remitente.", variant: "destructive"});
         return;
     }
+    if (!selectedSender.latitud || !selectedSender.longitud) {
+      toast({title: "Error de Remitente", description: "El cliente remitente no tiene coordenadas. Por favor, actualice los datos del cliente.", variant: "destructive"});
+      return;
+    }
+     if (!geocodedDest || !geocodedDest.lat || !geocodedDest.lng) {
+      toast({title: "Error de Destinatario", description: "La dirección de destino no ha sido geocodificada. Por favor, verifíquela.", variant: "destructive"});
+      return;
+    }
+
     setIsSubmitting(true);
     const result = await onSubmit(formData); 
     setIsSubmitting(false);
      if (result.success) {
-      form.reset({ // Reset to initial empty values
+      form.reset({ 
         remitente_cliente_id: '',
         nombre_destinatario: '',
         telefono_destinatario: '',
         direccion_destino: '',
+        tipo_servicio_id: tiposServicio.length > 0 ? tiposServicio[0].id : '',
         horario_retiro_desde: "",
         horario_entrega_hasta: "",
         precio: 0,
@@ -141,9 +177,9 @@ export function DosRuedasEnvioForm({
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(processSubmit)} className="space-y-6">
-        <Card className="shadow-md">
+        <Card className="shadow-sm rounded-lg">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><User className="text-primary" /> Información de Quién Envía</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-lg"><User className="text-primary" /> Información de Quién Envía</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <FormField
@@ -152,7 +188,7 @@ export function DosRuedasEnvioForm({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Nombre de quien envía*</FormLabel>
-                  <Select onValueChange={(value) => { field.onChange(value); handleSenderChange(value); }} value={field.value}>
+                  <Select onValueChange={field.onChange} value={field.value} defaultValue={field.value}>
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="Seleccione un cliente remitente" />
@@ -190,9 +226,9 @@ export function DosRuedasEnvioForm({
           </CardContent>
         </Card>
 
-        <Card className="shadow-md">
+        <Card className="shadow-sm rounded-lg">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><User className="text-accent" /> Información de Quién Recibe</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-lg"><User className="text-accent" /> Información de Quién Recibe</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <FormField
@@ -201,7 +237,7 @@ export function DosRuedasEnvioForm({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Nombre de quien recibe*</FormLabel>
-                  <FormControl><Input placeholder="Ej: Ana Gonzalez" {...field} /></FormControl>
+                  <FormControl><Input placeholder="Ej: Ana Gonzalez" {...field} value={field.value ?? ""} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )}
@@ -212,7 +248,7 @@ export function DosRuedasEnvioForm({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Teléfono (Destinatario)*</FormLabel>
-                  <FormControl><Input type="tel" placeholder="Ej: +542236602699" {...field} /></FormControl>
+                  <FormControl><Input type="tel" placeholder="Ej: +542236602699" {...field} value={field.value ?? ""} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )}
@@ -224,7 +260,7 @@ export function DosRuedasEnvioForm({
                 <FormItem>
                   <FormLabel>Dirección de entrega*</FormLabel>
                   <div className="flex items-center gap-2">
-                    <FormControl className="flex-grow"><Input placeholder="Ej: 11 de Septiembre 3687, Mar del Plata" {...field} /></FormControl>
+                    <FormControl className="flex-grow"><Input placeholder="Ej: 11 de Septiembre 3687, Mar del Plata" {...field} value={field.value ?? ""} /></FormControl>
                     <Button type="button" onClick={handleGeocodeDest} disabled={isGeocodingDest || !isMapsApiReady} variant="outline" size="icon" title="Verificar Dirección">
                       {isGeocodingDest ? <Loader2 className="h-4 w-4 animate-spin" /> : <MapPin className="h-4 w-4" />}
                     </Button>
@@ -239,16 +275,40 @@ export function DosRuedasEnvioForm({
           </CardContent>
         </Card>
 
-        <Card className="shadow-md">
-          <CardHeader><CardTitle>Detalles del Envío</CardTitle></CardHeader>
+        <Card className="shadow-sm rounded-lg">
+          <CardHeader><CardTitle className="flex items-center text-lg gap-2"><Truck className="text-primary"/>Detalles del Servicio y Envío</CardTitle></CardHeader>
           <CardContent className="space-y-4">
+            <FormField
+              control={form.control}
+              name="tipo_servicio_id"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Tipo de Servicio*</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value} defaultValue={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Seleccione un tipo de servicio" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {tiposServicio.map((servicio) => (
+                        <SelectItem key={servicio.id} value={servicio.id!}>
+                          {servicio.nombre}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
                 control={form.control}
                 name="horario_retiro_desde"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Horario inicial de retiro* (HH:MM)</FormLabel>
+                    <FormLabel>Horario inicial de retiro (HH:MM)</FormLabel>
                     <FormControl><Input placeholder="Ej: 09:00" {...field} value={field.value ?? ""} /></FormControl>
                     <FormDescription>Desde que hora se puede retirar.</FormDescription>
                     <FormMessage />
@@ -260,7 +320,7 @@ export function DosRuedasEnvioForm({
                 name="horario_entrega_hasta"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Horario límite de entrega* (HH:MM)</FormLabel>
+                    <FormLabel>Horario límite de entrega (HH:MM)</FormLabel>
                     <FormControl><Input placeholder="Ej: 18:00" {...field} value={field.value ?? ""} /></FormControl>
                     <FormDescription>Hasta que hora se puede entregar.</FormDescription>
                     <FormMessage />
@@ -273,11 +333,13 @@ export function DosRuedasEnvioForm({
               name="precio"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Monto a cobrar*</FormLabel>
+                  <FormLabel>Monto a cobrar (Estimado)</FormLabel>
                   <FormControl><Input type="number" step="0.01" placeholder="0.00" {...field} 
-                    onChange={e => field.onChange(parseFloat(e.target.value) || 0)}
+                    readOnly 
+                    className="bg-muted/80 cursor-not-allowed"
                     value={field.value ?? 0}
                   /></FormControl>
+                  <FormDescription>El precio se calculará y confirmará.</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -304,5 +366,3 @@ export function DosRuedasEnvioForm({
     </Form>
   );
 }
-
-    
