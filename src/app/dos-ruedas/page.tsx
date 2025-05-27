@@ -8,7 +8,8 @@ import { Loader2, ShipWheel } from 'lucide-react';
 import { createEnvioAction, getClientesForSelect } from '@/actions/envio-actions';
 import type { DosRuedasEnvioFormValues, Cliente } from '@/lib/schemas';
 import { useToast } from '@/hooks/use-toast';
-import { useRouter } from 'next/navigation'; // Corrected import
+import { useRouter } from 'next/navigation'; 
+import { supabase } from '@/lib/supabase/client'; // Import supabase for direct calls if needed elsewhere, but not for this specific redundant call
 
 export default function DosRuedasPage() {
   const { toast } = useToast();
@@ -21,21 +22,22 @@ export default function DosRuedasPage() {
     async function loadInitialData() {
       setIsLoadingData(true);
       try {
+        // getClientesForSelect already fetches all necessary client details
         const clientesData = await getClientesForSelect();
-        // For this form, we need more client details than just name/id for auto-population
-        const { data: fullClientesData, error } = await supabase
-            .from('clientes')
-            .select('id, nombre, apellido, direccion, telefono, latitud, longitud')
-            .eq('estado', 'activo')
-            .order('apellido')
-            .order('nombre');
+        
+        if (!clientesData) { // Or check if it's an empty array and handle as needed
+          throw new Error("No se pudieron cargar los datos de los clientes.");
+        }
+        setClientes(clientesData);
 
-        if (error) throw error;
-        setClientes(fullClientesData || []);
-
-      } catch (error) {
+      } catch (error: any) {
         console.error("Error loading initial data for Dos Ruedas form:", error);
-        toast({ title: "Error al Cargar Datos", description: "No se pudieron cargar los clientes.", variant: "destructive" });
+        toast({ 
+            title: "Error al Cargar Datos", 
+            description: error.message || "No se pudieron cargar los clientes para el formulario.", 
+            variant: "destructive" 
+        });
+        setClientes([]); // Ensure clientes is an empty array on error
       } finally {
         setIsLoadingData(false);
       }
@@ -44,14 +46,12 @@ export default function DosRuedasPage() {
   }, [toast]);
 
   const handleCreateDosRuedasEnvio = async (formData: DosRuedasEnvioFormValues) => {
-    setIsSubmitting(true); // Ensure isSubmitting is managed by this page
-    const result = await createEnvioAction(formData as any); // Cast as any for now, action will be updated
+    setIsSubmitting(true);
+    const result = await createEnvioAction(formData as any); 
     setIsSubmitting(false);
     if (result.success && result.data) {
       toast({ title: "Pedido Recibido", description: `Tu pedido ID ${result.data.id?.substring(0,8)}... ha sido creado. Un operador se contactará.` });
-      // Optionally redirect or clear form
-      // router.push('/'); 
-      // form.reset(); // If form instance was available here
+      // form.reset(); // This would need the form instance passed down or context
     } else {
       toast({ title: "Error al Crear Pedido", description: result.error || "Ocurrió un error inesperado.", variant: "destructive" });
     }
