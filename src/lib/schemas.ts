@@ -127,13 +127,13 @@ export const TarifaDistanciaCalculadoraSchema = z.object({
     (val) => parseFloat(String(val)),
     z.number().positive("La distancia máxima debe ser un número positivo.")
   ),
-  precio_base: z.preprocess( // Precio base opcional DENTRO del rango
+  precio_base: z.preprocess(
     (val) => (val === "" || val === null || val === undefined || isNaN(Number(val)) ? null : parseFloat(String(val))),
     z.number().min(0, "El precio base del rango no puede ser negativo.").nullable().optional().default(null)
   ),
-  precio_por_km: z.preprocess( // Para la lógica "precio total del rango", este es el precio fijo.
+  precio_por_km: z.preprocess(
     (val) => parseFloat(String(val)),
-    z.number().min(0,"El precio para el rango debe ser un número positivo.").default(0) // Min 0 si puede ser gratis
+    z.number().min(0,"El precio para el rango debe ser un número positivo.").default(0)
   ),
   created_at: z.string().datetime().optional(),
   updated_at: z.string().datetime().optional(),
@@ -148,12 +148,11 @@ export const TarifaDistanciaCalculadoraSchema = z.object({
   }
 });
 export type TarifaDistanciaCalculadora = z.infer<typeof TarifaDistanciaCalculadoraSchema>;
-// For the form, tipo_servicio_id comes as a prop, not part of these direct form values
 export type TarifaDistanciaFormValues = Omit<TarifaDistanciaCalculadora, 'id' | 'created_at' | 'updated_at' | 'user_id' | 'tipo_servicio_id'>;
 
 
 // --- Envío Schemas ---
-const timeRegex = /^(?:[01]\d|2[0-3]):[0-5]\d$/; // HH:MM format
+const timeRegex = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
 
 export const EnvioBaseSchema = z.object({
   id: z.string().uuid().optional(),
@@ -184,19 +183,19 @@ export const EnvioBaseSchema = z.object({
   tipo_servicio_id: z.string().uuid({ message: "Debe seleccionar un tipo de servicio."}).nullable().optional(),
   precio: z.preprocess(
     (val) => {
-      if (val === "" || val === null || val === undefined) return 0; // Default to 0 if empty/null/undefined
+      if (val === "" || val === null || val === undefined) return 0;
       const num = parseFloat(String(val));
-      return isNaN(num) ? 0 : num; // Default to 0 if NaN
+      return isNaN(num) ? 0 : num;
     },
     z.number().min(0, "El precio no puede ser negativo.").default(0)
   ),
   estado: EstadoEnvioEnum.default('pendiente_asignacion'),
   fecha_estimada_entrega: z.date().nullable().optional(),
   horario_retiro_desde: z.string()
-    .regex(timeRegex, { message: "Formato HH:MM inválido." })
+    .regex(timeRegex, { message: "Formato HH:MM inválido para horario de retiro." })
     .optional().nullable().default(null).or(z.literal("")),
   horario_entrega_hasta: z.string()
-    .regex(timeRegex, { message: "Formato HH:MM inválido." })
+    .regex(timeRegex, { message: "Formato HH:MM inválido para horario de entrega." })
     .optional().nullable().default(null).or(z.literal("")),
   repartidor_asignado_id: z.string().uuid().nullable().optional(),
   notas_conductor: z.string().nullable().optional().default(""),
@@ -211,7 +210,7 @@ export const EnvioSchema = EnvioBaseSchema.superRefine((data, ctx) => {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       message: "Debe seleccionar un cliente remitente, una empresa de origen, o ingresar un nombre de cliente temporal.",
-      path: ["remitente_cliente_id"],
+      path: ["remitente_cliente_id"], // Or a more general path if appropriate
     });
   }
   if (data.cliente_temporal_nombre && !data.cliente_temporal_telefono) {
@@ -221,11 +220,11 @@ export const EnvioSchema = EnvioBaseSchema.superRefine((data, ctx) => {
       path: ["cliente_temporal_telefono"],
     });
   }
-   if (!data.nombre_destinatario && !data.empresa_destino_id) {
+   if (!data.nombre_destinatario && !data.empresa_destino_id) { // Requires recipient name OR destination company
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       message: "Debe ingresar un nombre de destinatario o seleccionar una empresa de destino.",
-      path: ["nombre_destinatario"],
+      path: ["nombre_destinatario"], // Or a more general path
     });
   }
 });
@@ -240,10 +239,10 @@ export const DosRuedasEnvioFormSchema = z.object({
   longitud_destino: z.number().nullable().optional(),
   tipo_servicio_id: z.string().uuid("Debe seleccionar un tipo de servicio."),
   horario_retiro_desde: z.string()
-    .regex(timeRegex, { message: "Formato HH:MM inválido." })
+    .regex(timeRegex, { message: "Formato HH:MM inválido para horario de retiro." })
     .optional().nullable().default("").or(z.literal("")),
   horario_entrega_hasta: z.string()
-    .regex(timeRegex, { message: "Formato HH:MM inválido." })
+    .regex(timeRegex, { message: "Formato HH:MM inválido para horario de entrega." })
     .optional().nullable().default("").or(z.literal("")),
   precio: z.preprocess(
     (val) => {
@@ -257,7 +256,6 @@ export const DosRuedasEnvioFormSchema = z.object({
 });
 export type DosRuedasEnvioFormValues = z.infer<typeof DosRuedasEnvioFormSchema>;
 
-// Type for the calculated shipment summary on DosRuedasPage
 export interface DosRuedasCalculatedShipment {
   remitenteNombre: string;
   remitenteDireccion: string;
@@ -273,7 +271,7 @@ export interface DosRuedasCalculatedShipment {
   precioCalculado: number;
   distanciaKm: number | null;
   detallesAdicionales: string | null;
-  calculationMethod?: string; // To show how price was calculated
+  calculationMethod?: string;
 }
 
 export interface EnvioConDetalles extends Envio {
@@ -308,7 +306,7 @@ export interface RepartoConDetalles extends Reparto {
   repartidores?: Pick<Repartidor, 'id' | 'nombre'> | null;
   empresas?: Pick<Empresa, 'id' | 'nombre' | 'latitud' | 'longitud' | 'direccion'> | null;
   paradas_count?: number;
-  paradas_reparto?: ParadaConDetalles[];
+  paradas_reparto?: ParadaConDetalles[]; // Esta es la clave para la relación con ParadaConDetalles
 }
 
 // --- ParadaReparto Schemas ---
@@ -328,9 +326,10 @@ export const ParadaRepartoSchema = z.object({
 });
 export type ParadaReparto = z.infer<typeof ParadaRepartoSchema>;
 
+// ParadaConDetalles ahora anida EnvioConDetalles
 export interface ParadaConDetalles extends ParadaReparto {
-  envios?: EnvioConDetalles | null;
-  repartos?: RepartoConDetalles | null;
+  envios?: EnvioConDetalles | null; // El envío asociado a esta parada
+  repartos?: RepartoConDetalles | null; // El reparto al que pertenece esta parada
 }
 
 
@@ -401,8 +400,12 @@ export type ActiveRepartoListItem = Pick<Reparto, 'id' | 'fecha_reparto' | 'esta
 
 // --- Type for Route Optimization ---
 export interface MappableStop {
-  id: string; // Original ID of the ParadaReparto or a special identifier like 'ORIGIN_EMPRESA_ANCHOR'
+  id: string; // Unique ID for this point (e.g., parada.id + '_pickup' or parada.id + '_delivery' or 'ORIGIN_EMPRESA_ANCHOR')
+  originalParadaId?: string | null; // The ID of the ParadaReparto table entry, if applicable
+  envioId?: string | null; // The ID of the Envio if this point relates to one
+  type: 'pickup_empresa' | 'pickup_envio' | 'delivery_envio';
   location: { lat: number; lng: number };
+  displayName: string; // For map markers/tooltips
 }
 
     
