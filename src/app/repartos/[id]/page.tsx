@@ -1,7 +1,7 @@
 
 "use client";
 
-import * as React from 'react';
+import * as React from 'react'; // Ensure React is fully imported
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,16 +9,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ArrowLeft, Building, CalendarIcon as IconCalendar, CheckCircle, ClipboardEdit, Edit, Info, Loader2, MapPin, Package, Play, PowerOff, RefreshCw, Route, Truck, User, XCircle } from "lucide-react";
 import { getRepartoByIdAction, updateRepartoEstadoAction, updateParadaEstadoAction, reorderParadasAction } from '@/actions/reparto-actions';
-import type { RepartoConDetalles, ParadaConDetalles, EstadoReparto, EstadoEnvio, EnvioConDetalles, Empresa } from '@/lib/schemas'; // Added ParadaConDetalles
+import type { RepartoConDetalles, ParadaConDetalles, EstadoReparto, EstadoEnvio, EnvioConDetalles, Empresa } from '@/lib/schemas';
 import { EstadoRepartoEnum, EstadoEnvioEnum } from '@/lib/schemas';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
-import { format, isValid } from 'date-fns'; // Removed parseISO as not directly used here, Added isValid
+import { format, isValid, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
-import { RepartoMapComponent } from '@/components/reparto-map-component'; // Import the new map component
+import { RepartoMapComponent } from '@/components/reparto-map-component';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 
@@ -26,10 +26,12 @@ interface RepartoDetallePageProps {
   params: { id: string };
 }
 
-export default function RepartoDetallePage({ params }: RepartoDetallePageProps) {
+export default function RepartoDetallePage({ params: paramsProp }: RepartoDetallePageProps) {
   const { toast } = useToast();
   const router = useRouter();
-  const repartoId = params.id;
+  
+  const resolvedParams = React.use(paramsProp); // Use React.use to resolve params
+  const repartoId = resolvedParams.id;
 
   const [reparto, setReparto] = React.useState<(RepartoConDetalles & { paradas: ParadaConDetalles[] }) | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
@@ -45,7 +47,20 @@ export default function RepartoDetallePage({ params }: RepartoDetallePageProps) 
       return;
     }
     const sortedParadas = data.paradas ? [...data.paradas].sort((a, b) => (a.orden_visita || Infinity) - (b.orden_visita || Infinity)) : [];
-    setReparto({...data, paradas: sortedParadas});
+    
+    // Ensure fecha_reparto is a Date object
+    let repartoDataWithDate = { ...data };
+    if (data.fecha_reparto && typeof data.fecha_reparto === 'string') {
+      const parsedDate = parseISO(data.fecha_reparto); // Supabase DATE is YYYY-MM-DD
+      if (isValid(parsedDate)) {
+        repartoDataWithDate.fecha_reparto = parsedDate;
+      } else {
+        console.warn("Invalid date received for fecha_reparto:", data.fecha_reparto);
+        // Keep original string or set to null/undefined if critical for display
+      }
+    }
+
+    setReparto({...repartoDataWithDate, paradas: sortedParadas});
     setParadasEdit(sortedParadas);
     setIsLoading(false);
   }, [repartoId, toast, router]);
@@ -243,14 +258,12 @@ export default function RepartoDetallePage({ params }: RepartoDetallePageProps) 
                 {paradas.length === 0 ? (
                     <p className="text-muted-foreground">Este reparto no tiene paradas asignadas.</p>
                 ) : (
-                    <ScrollArea className="max-h-[600px] lg:max-h-[calc(100vh-20rem)] pr-3"> {/* Adjusted max height for better scroll on desktop */}
+                    <ScrollArea className="max-h-[600px] lg:max-h-[calc(100vh-20rem)] pr-3">
                     <Table>
                         <TableHeader>
                         <TableRow>
                             <TableHead className="w-[60px]">Orden</TableHead>
                             <TableHead>Destino/Descripción</TableHead>
-                            {/* <TableHead>Cliente</TableHead> */}
-                            {/* <TableHead>Paquete</TableHead> */}
                             <TableHead className="w-[180px]">Estado Parada</TableHead>
                         </TableRow>
                         </TableHeader>

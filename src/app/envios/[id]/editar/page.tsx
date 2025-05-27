@@ -1,7 +1,7 @@
 
 "use client";
 
-import * as React from 'react';
+import * as React from 'react'; // Ensure React is fully imported
 import { EnvioForm } from '@/components/forms/envio-form';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Edit, Loader2, ArrowLeft } from 'lucide-react';
@@ -18,15 +18,18 @@ import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import { parseISO, isValid } from 'date-fns';
 
 interface EditarEnvioPageProps {
   params: { id: string };
 }
 
-export default function EditarEnvioPage({ params }: EditarEnvioPageProps) {
+export default function EditarEnvioPage({ params: paramsProp }: EditarEnvioPageProps) { // Renamed prop
   const { toast } = useToast();
   const router = useRouter();
-  const envioId = params.id;
+
+  const resolvedParams = React.use(paramsProp); // Use React.use to resolve params
+  const envioId = resolvedParams.id;
 
   const [envio, setEnvio] = React.useState<EnvioConDetalles | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
@@ -51,10 +54,26 @@ export default function EditarEnvioPage({ params }: EditarEnvioPageProps) {
 
         if (envioResult.error || !envioResult.envio) {
           toast({ title: "Error al Cargar Envío", description: envioResult.error || "Envío no encontrado.", variant: "destructive" });
-          router.push('/envios'); // Redirect if envio not found
+          router.push('/envios'); 
           return;
         }
-        setEnvio(envioResult.envio);
+        
+        let envioData = { ...envioResult.envio };
+        if (envioData.fecha_estimada_entrega && typeof envioData.fecha_estimada_entrega === 'string') {
+          const parsedDate = parseISO(envioData.fecha_estimada_entrega); // Supabase DATE is YYYY-MM-DD string
+          if (isValid(parsedDate)) {
+            envioData.fecha_estimada_entrega = parsedDate;
+          } else {
+            console.warn("Invalid date for fecha_estimada_entrega:", envioResult.envio.fecha_estimada_entrega);
+            envioData.fecha_estimada_entrega = undefined; // Or null, depending on schema/form handling
+          }
+        } else if (envioData.fecha_estimada_entrega instanceof Date && !isValid(envioData.fecha_estimada_entrega)) {
+            console.warn("Invalid Date object for fecha_estimada_entrega:", envioData.fecha_estimada_entrega);
+            envioData.fecha_estimada_entrega = undefined;
+        }
+
+
+        setEnvio(envioData as EnvioConDetalles);
         setClientes(clientesData);
         setEmpresas(empresasData);
         setTiposPaquete(tiposPaqueteData);
@@ -67,7 +86,9 @@ export default function EditarEnvioPage({ params }: EditarEnvioPageProps) {
         setIsLoadingData(false);
       }
     }
-    loadEnvioAndFormData();
+    if (envioId) { // Ensure envioId is available before fetching
+        loadEnvioAndFormData();
+    }
   }, [envioId, toast, router]);
 
   const handleUpdateEnvio = async (formData: Envio) => {
@@ -83,7 +104,7 @@ export default function EditarEnvioPage({ params }: EditarEnvioPageProps) {
     return result;
   };
 
-  if (isLoadingData) {
+  if (isLoadingData || !envioId) { // Check for envioId here as well
     return (
       <div className="flex justify-center items-center h-screen">
         <Loader2 className="h-16 w-16 animate-spin text-primary" />
@@ -92,7 +113,8 @@ export default function EditarEnvioPage({ params }: EditarEnvioPageProps) {
   }
 
   if (!envio) {
-    return <p className="text-center text-destructive">Envío no encontrado.</p>;
+     // This might be shown briefly if envioId is present but fetching fails or data is null initially
+    return <div className="flex justify-center items-center h-screen"><p className="text-destructive">Envío no encontrado o error al cargar.</p></div>;
   }
 
   return (
