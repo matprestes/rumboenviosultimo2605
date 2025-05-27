@@ -42,7 +42,6 @@ interface RepartoFormProps {
   fetchEnviosPendientes: (empresaId?: string | null) => Promise<EnvioConDetalles[]>;
   isSubmitting?: boolean;
   setIsSubmitting: (isSubmitting: boolean) => void;
-  // defaultValues prop not typically needed for a create-only form like this
 }
 
 export function RepartoForm({
@@ -65,15 +64,15 @@ export function RepartoForm({
       fecha_reparto: new Date(),
       repartidor_id: undefined,
       empresa_asociada_id: null,
-      notas: "", // Initialize optional string
+      notas: "",
       envio_ids: [],
       estado: 'planificado',
     },
   });
 
-  const { fields, append, remove } = useFieldArray({
+  const { fields, append, remove } = useFieldArray<RepartoFormValues, "envio_ids", "id">({
     control: form.control,
-    name: "envio_ids" as any, 
+    name: "envio_ids"
   });
 
   const selectedEmpresaId = form.watch('empresa_asociada_id');
@@ -86,7 +85,7 @@ export function RepartoForm({
         setEnviosDisponibles(data);
         const currentSelected = form.getValues('envio_ids');
         const newAvailableIds = new Set(data.map(e => e.id));
-        const newSelected = currentSelected.filter(id => newAvailableIds.has(id));
+        const newSelected = currentSelected.filter(id => newAvailableIds.has(id!));
         form.setValue('envio_ids', newSelected);
 
       } catch (error) {
@@ -129,7 +128,7 @@ export function RepartoForm({
     const result = await onSubmit(formData);
     setIsSubmitting(false);
     if (result.success) {
-      form.reset({ // Reset form to its initial default values on success
+      form.reset({ 
         fecha_reparto: new Date(),
         repartidor_id: undefined,
         empresa_asociada_id: null,
@@ -137,8 +136,7 @@ export function RepartoForm({
         envio_ids: [],
         estado: 'planificado',
       }); 
-      setSearchTerm(""); // Clear search term
-      // Optionally, re-fetch initial envios pendientes if needed, or rely on page navigation
+      setSearchTerm(""); 
     }
   };
 
