@@ -38,8 +38,8 @@ interface DosRuedasEnvioFormProps {
   onSubmit: (data: DosRuedasEnvioFormValues) => Promise<{ success: boolean; error?: string; data?: any }>;
   clientes: Pick<Cliente, 'id' | 'nombre' | 'apellido' | 'direccion' | 'telefono' | 'latitud' | 'longitud'>[];
   tiposServicio: TipoServicio[];
-  isSubmitting: boolean; 
-  setIsSubmitting: (isSubmitting: boolean) => void; 
+  isSubmitting: boolean;
+  setIsSubmitting: (isSubmitting: boolean) => void;
   onShipmentCalculated: (data: DosRuedasCalculatedShipment | null) => void;
 }
 
@@ -47,8 +47,8 @@ export const DosRuedasEnvioForm = React.forwardRef<DosRuedasEnvioFormRef, DosRue
   onSubmit,
   clientes,
   tiposServicio,
-  isSubmitting, 
-  setIsSubmitting, 
+  isSubmitting,
+  setIsSubmitting,
   onShipmentCalculated,
 }, ref) => {
   const { toast } = useToast();
@@ -76,7 +76,7 @@ export const DosRuedasEnvioForm = React.forwardRef<DosRuedasEnvioFormRef, DosRue
       detalles_adicionales: "",
     },
   });
-  
+
   React.useImperativeHandle(ref, () => ({
     triggerSubmit: () => {
       form.handleSubmit(onSubmit)();
@@ -93,7 +93,7 @@ export const DosRuedasEnvioForm = React.forwardRef<DosRuedasEnvioFormRef, DosRue
         console.error("Failed to load Google Maps API in DosRuedasEnvioForm:", error);
         toast({
           title: "Error de Mapa",
-          description: "No se pudo cargar la API de Google Maps. Funcionalidades de mapa y cálculo de precio estarán limitadas.",
+          description: `No se pudo cargar la API de Google Maps. Funcionalidades de mapa y cálculo de precio estarán limitadas. Detalle: ${(error as Error).message}`,
           variant: "destructive",
         });
       });
@@ -101,30 +101,39 @@ export const DosRuedasEnvioForm = React.forwardRef<DosRuedasEnvioFormRef, DosRue
 
   const selectedSenderId = form.watch('remitente_cliente_id');
   const selectedTipoServicioId = form.watch('tipo_servicio_id');
-  
+  const destinationAddress = form.watch('direccion_destino');
+
+
   React.useEffect(() => {
     const cliente = clientes.find(c => c.id === selectedSenderId);
     setSelectedSender(cliente || null);
     form.setValue('precio', 0);
     setCalculatedDistance(null);
-    onShipmentCalculated(null); 
-  }, [selectedSenderId, clientes, form, onShipmentCalculated]);
+    setGeocodedDest(null); // Clear geocoded destination when sender changes
+    form.setValue('direccion_destino', ''); // Clear destination address input
+    form.setValue('latitud_destino', null);
+    form.setValue('longitud_destino', null);
+    onShipmentCalculated(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSenderId, clientes, form]); // Removed onShipmentCalculated from deps to avoid loop
 
   const calculateAndSetPrice = React.useCallback(async () => {
     if (!isMapsApiReady || !googleMaps || !selectedSender || !selectedSender.latitud || !selectedSender.longitud || !geocodedDest || geocodedDest.lat === null || geocodedDest.lng === null || !selectedTipoServicioId) {
-      form.setValue('precio', 0);
-      setCalculatedDistance(null);
-      onShipmentCalculated(null);
-      if (geocodedDest && selectedSender && selectedTipoServicioId) { // Only toast if all inputs for calc are present but something is off (e.g. maps not ready)
-          toast({ title: "Faltan datos para calcular", description: "Asegúrese de tener remitente, destino geocodificado y tipo de servicio seleccionados.", variant: "default" });
-      }
-      return;
+        if (geocodedDest && selectedSender && selectedTipoServicioId && !isMapsApiReady) {
+             // Do not reset price or summary here, just inform user if API isn't ready but other data is
+        } else {
+            // Only reset price and summary if essential data for calculation is missing
+            form.setValue('precio', 0);
+            setCalculatedDistance(null);
+            onShipmentCalculated(null);
+        }
+        return;
     }
 
     setIsCalculatingPrice(true);
-    form.setValue('precio', 0); 
+    form.setValue('precio', 0);
     setCalculatedDistance(null);
-    onShipmentCalculated(null);
+    // Do not call onShipmentCalculated(null) here as it might clear the summary prematurely if a calculation is in progress
 
     let distanceKm = 0;
     let calculationMethod = "Cálculo de precio estándar.";
@@ -135,7 +144,7 @@ export const DosRuedasEnvioForm = React.forwardRef<DosRuedasEnvioFormRef, DosRue
         origin: { lat: selectedSender.latitud, lng: selectedSender.longitud },
         destination: { lat: geocodedDest.lat, lng: geocodedDest.lng },
         travelMode: googleMaps.maps.TravelMode.DRIVING,
-        region: 'AR',
+        region: 'AR', // Bias results towards Argentina
       };
 
       const directionsResult = await new Promise<google.maps.DirectionsResult | null>((resolve, reject) => {
@@ -165,55 +174,55 @@ export const DosRuedasEnvioForm = React.forwardRef<DosRuedasEnvioFormRef, DosRue
       const { tarifas, error: tarifasError } = await getTarifasByTipoServicioAction(selectedTipoServicioId);
 
       if (tsError || tarifasError || !tipoServicio) {
-        console.error("Error fetching service/tariffs:", {tsError, tarifasError, tipoServicio});
         throw new Error("No se pudieron obtener las tarifas del servicio seleccionado.");
       }
 
       let calculatedPrice = 0;
       let specificTariffApplied = false;
-      
+
       if (tarifas && tarifas.length > 0) {
         const sortedTarifas = [...tarifas].sort((a, b) => a.distancia_min_km - b.distancia_min_km);
-        
+
         for (const tarifa of sortedTarifas) {
           if (distanceKm >= tarifa.distancia_min_km && distanceKm <= tarifa.distancia_max_km) {
-            calculatedPrice = tarifa.precio_por_km; // precio_por_km is the TOTAL fixed price for the range
+            calculatedPrice = tarifa.precio_por_km; // This is the total fixed price for the range
             specificTariffApplied = true;
             calculationMethod = `Tarifa por rango (${tarifa.distancia_min_km}km - ${tarifa.distancia_max_km}km) aplicada. Precio total: $${calculatedPrice.toFixed(2)}.`;
             break;
           }
         }
-
+        
         if (!specificTariffApplied && sortedTarifas.length > 0) {
           const tarifaMasAlta = sortedTarifas[sortedTarifas.length - 1];
           if (distanceKm > tarifaMasAlta.distancia_max_km) {
             if (tipoServicio.precio_base && tipoServicio.precio_base > 0) {
               const distanciaExcedente = distanceKm - tarifaMasAlta.distancia_max_km;
-              calculatedPrice = tarifaMasAlta.precio_por_km + (distanciaExcedente * tipoServicio.precio_base); // tipoServicio.precio_base acts as per-km-extra here
-              specificTariffApplied = true; // Technically true, as it's derived from specific tariffs + service base
+              calculatedPrice = tarifaMasAlta.precio_por_km + (distanciaExcedente * tipoServicio.precio_base);
+              specificTariffApplied = true; // Technically this is still based on tariff + service base
               calculationMethod = `Tarifa rango alto ($${tarifaMasAlta.precio_por_km.toFixed(2)}) + $${tipoServicio.precio_base.toFixed(2)}/km por excedente (${distanciaExcedente.toFixed(2)}km).`;
             } else {
-              calculatedPrice = tarifaMasAlta.precio_por_km; // Use the highest tier's price if no per-km-extra base is set
+              calculatedPrice = tarifaMasAlta.precio_por_km; // Use the highest tier's price if no service base for excess
               specificTariffApplied = true;
               calculationMethod = `Tarifa rango alto ($${tarifaMasAlta.precio_por_km.toFixed(2)}) aplicada. (Servicio sin precio base para km excedente).`;
-              toast({ title: "Advertencia de Precio", description: "Se aplicó la tarifa del rango más alto. El servicio no tiene 'precio base' para calcular costo por km excedente.", variant: "default", duration: 8000 });
+              toast({ title: "Advertencia de Precio", description: "Se aplicó la tarifa del rango más alto. El servicio no tiene 'precio base' configurado para calcular costo por km excedente.", variant: "default", duration: 8000 });
             }
           }
         }
       }
-      
-      if (!specificTariffApplied) {
+
+      if (!specificTariffApplied) { // Fallback to general service rates if no ranges defined or none matched
         calculatedPrice = (tipoServicio.precio_base || 0) + (distanceKm * (tipoServicio.precio_extra_km_default || 0));
         calculationMethod = `Tarifa general del servicio: Base $${(tipoServicio.precio_base || 0).toFixed(2)} + $${(tipoServicio.precio_extra_km_default || 0).toFixed(2)}/km.`;
-         if (tipoServicio.precio_extra_km_default === null || tipoServicio.precio_extra_km_default === 0) {
-             calculationMethod = `Aplicado precio base del servicio: $${(tipoServicio.precio_base || 0).toFixed(2)}. (Sin tarifa por KM adicional configurada para fallback).`;
-         }
+        if (tipoServicio.precio_extra_km_default === null || tipoServicio.precio_extra_km_default === 0) {
+            calculatedPrice = tipoServicio.precio_base || 0; // Only base price if no per-km extra
+            calculationMethod = `Aplicado precio base del servicio: $${calculatedPrice.toFixed(2)}. (Sin tarifa por KM adicional configurada para fallback).`;
+        }
       }
       
       const finalPrice = parseFloat(calculatedPrice.toFixed(2));
       form.setValue('precio', finalPrice);
       toast({ title: "Precio Estimado Calculado", description: `${calculationMethod} Distancia: ${distanceKm.toFixed(2)} km. Total: $${finalPrice.toFixed(2)}`, duration: 8000});
-
+      
       const formDataValues = form.getValues();
       onShipmentCalculated({
         remitenteNombre: `${selectedSender.nombre} ${selectedSender.apellido}`,
@@ -234,7 +243,7 @@ export const DosRuedasEnvioForm = React.forwardRef<DosRuedasEnvioFormRef, DosRue
       });
 
     } catch (error: any) {
-      toast({ title: "Error Calculando Precio", description: error.message || "Ocurrió un error.", variant: "destructive" });
+      toast({ title: "Error Calculando Precio", description: error.message || "Ocurrió un error al intentar calcular el precio.", variant: "destructive" });
       form.setValue('precio', 0);
       setCalculatedDistance(null);
       onShipmentCalculated(null);
@@ -242,22 +251,25 @@ export const DosRuedasEnvioForm = React.forwardRef<DosRuedasEnvioFormRef, DosRue
       setIsCalculatingPrice(false);
     }
   }, [
-      isMapsApiReady, 
-      googleMaps, 
-      selectedSender, 
-      geocodedDest, 
-      selectedTipoServicioId, 
-      form, 
-      toast, 
+      isMapsApiReady,
+      googleMaps,
+      selectedSender,
+      geocodedDest,
+      selectedTipoServicioId,
+      form,
+      toast,
       onShipmentCalculated
   ]);
+
 
   React.useEffect(() => {
     if (geocodedDest && selectedSenderId && selectedTipoServicioId && isMapsApiReady) {
         calculateAndSetPrice();
     }
-  }, [geocodedDest, selectedSenderId, selectedTipoServicioId, isMapsApiReady, calculateAndSetPrice]); 
-
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [geocodedDest, selectedTipoServicioId, isMapsApiReady]); // Recalculate if destination, service type, or maps API readiness changes.
+                                                              // selectedSenderId changes are handled by a separate effect to clear destination.
+                                                              // calculateAndSetPrice is memoized
 
   const handleGeocodeDest = async () => {
     if (!isMapsApiReady || !googleMaps) {
@@ -270,12 +282,12 @@ export const DosRuedasEnvioForm = React.forwardRef<DosRuedasEnvioFormRef, DosRue
       return;
     }
     setIsGeocodingDest(true);
-    setGeocodedDest(null); 
-    form.setValue('precio', 0); 
+    setGeocodedDest(null);
+    form.setValue('precio', 0);
     form.setValue('latitud_destino', null);
     form.setValue('longitud_destino', null);
     setCalculatedDistance(null);
-    onShipmentCalculated(null); 
+    onShipmentCalculated(null);
 
     try {
       const result = await geocodeAddress(addressValue);
@@ -283,12 +295,11 @@ export const DosRuedasEnvioForm = React.forwardRef<DosRuedasEnvioFormRef, DosRue
         form.setValue("direccion_destino", result.formattedAddress, { shouldValidate: true });
         form.setValue('latitud_destino', result.lat);
         form.setValue('longitud_destino', result.lng);
-        setGeocodedDest(result); 
+        setGeocodedDest(result); // This will trigger the useEffect for price calculation
         toast({ title: "Geocodificación Exitosa", description: `Dirección de entrega verificada: ${result.formattedAddress}` });
-        // Calculation will be triggered by useEffect watching geocodedDest
       } else {
         toast({ title: "Error de Geocodificación", description: "No se pudo encontrar la dirección de entrega o está fuera de Mar del Plata.", variant: "destructive" });
-        setGeocodedDest(null); // Ensure it's null to prevent calculation with old data
+        setGeocodedDest(null); // Ensure geocodedDest is null to prevent calculation with stale data
       }
     } catch (error: any) {
       toast({ title: "Error de Geocodificación", description: error.message || "Ocurrió un error al procesar la dirección de entrega.", variant: "destructive" });
@@ -297,33 +308,57 @@ export const DosRuedasEnvioForm = React.forwardRef<DosRuedasEnvioFormRef, DosRue
       setIsGeocodingDest(false);
     }
   };
+  
+  const handleFormInternalSubmit = async (data: DosRuedasEnvioFormValues) => {
+    setIsSubmitting(true);
+    const result = await onSubmit(data); 
+    setIsSubmitting(false); 
+    if (result.success) {
+      form.reset({
+        remitente_cliente_id: '',
+        nombre_destinatario: '',
+        telefono_destinatario: '',
+        direccion_destino: '',
+        latitud_destino: null,
+        longitud_destino: null,
+        tipo_servicio_id: tiposServicio.length > 0 ? tiposServicio[0].id : '',
+        horario_retiro_desde: "",
+        horario_entrega_hasta: "",
+        precio: 0,
+        detalles_adicionales: "",
+      });
+      setSelectedSender(null);
+      setGeocodedDest(null);
+      onShipmentCalculated(null); 
+    }
+  };
+
 
   return (
     <Form {...form}>
-      <form className="space-y-6"> 
-        <Card className="shadow-sm rounded-lg">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg"><User className="text-primary" /> Información de Quién Envía</CardTitle>
+      <form onSubmit={form.handleSubmit(handleFormInternalSubmit)} className="space-y-6">
+        <Card className="shadow-sm rounded-lg border border-border">
+          <CardHeader className="bg-muted/30">
+            <CardTitle className="flex items-center gap-2 text-lg font-semibold text-foreground"><User className="text-primary" /> Información de Quién Envía</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-4 pt-4">
             <FormField
               control={form.control}
               name="remitente_cliente_id"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Nombre de quien envía*</FormLabel>
-                  <Select 
+                  <Select
                     onValueChange={(value) => {
                       field.onChange(value);
-                      setGeocodedDest(null); 
-                      form.setValue('direccion_destino', ''); 
+                      // Clear destination and price when sender changes
+                      form.setValue('direccion_destino', '');
+                      setGeocodedDest(null);
                       form.setValue('precio', 0);
-                      form.setValue('latitud_destino', null);
-                      form.setValue('longitud_destino', null);
                       setCalculatedDistance(null);
                       onShipmentCalculated(null);
-                    }} 
-                    value={field.value} 
+                    }}
+                    value={field.value}
                     defaultValue={field.value}
                   >
                     <FormControl>
@@ -355,7 +390,7 @@ export const DosRuedasEnvioForm = React.forwardRef<DosRuedasEnvioFormRef, DosRue
                    {selectedSender.latitud && selectedSender.longitud ? (
                      <FormDescription className="text-green-600 flex items-center gap-1 mt-1"><CheckCircle size={16}/> Dirección verificada.</FormDescription>
                    ) : (
-                     <FormDescription className="text-orange-600 flex items-center gap-1 mt-1"><AlertTriangle size={16}/> Cliente sin coordenadas. Contactar admin.</FormDescription>
+                     <FormDescription className="text-orange-600 flex items-center gap-1 mt-1"><AlertTriangle size={16}/> Cliente sin coordenadas. Actualice datos del cliente para envíos.</FormDescription>
                    )}
                 </FormItem>
               </>
@@ -363,11 +398,11 @@ export const DosRuedasEnvioForm = React.forwardRef<DosRuedasEnvioFormRef, DosRue
           </CardContent>
         </Card>
 
-        <Card className="shadow-sm rounded-lg">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg"><User className="text-accent" /> Información de Quién Recibe</CardTitle>
+        <Card className="shadow-sm rounded-lg border border-border">
+          <CardHeader className="bg-muted/30">
+            <CardTitle className="flex items-center gap-2 text-lg font-semibold text-foreground"><User className="text-accent" /> Información de Quién Recibe</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-4 pt-4">
             <FormField
               control={form.control}
               name="nombre_destinatario"
@@ -397,14 +432,14 @@ export const DosRuedasEnvioForm = React.forwardRef<DosRuedasEnvioFormRef, DosRue
                 <FormItem>
                   <FormLabel>Dirección de entrega*</FormLabel>
                   <div className="flex items-center gap-2">
-                    <FormControl className="flex-grow"><Input 
+                    <FormControl className="flex-grow"><Input
                         type="text"
-                        placeholder="Ej: 11 de Septiembre 3687, Mar del Plata" 
-                        {...field} 
+                        placeholder="Ej: 11 de Septiembre 3687, Mar del Plata"
+                        {...field}
                         value={field.value ?? ""}
                         onChange={(e) => {
                             field.onChange(e);
-                            setGeocodedDest(null); 
+                            setGeocodedDest(null); // Clear previous geocode on address change
                             form.setValue('precio', 0);
                             form.setValue('latitud_destino', null);
                             form.setValue('longitud_destino', null);
@@ -423,28 +458,28 @@ export const DosRuedasEnvioForm = React.forwardRef<DosRuedasEnvioFormRef, DosRue
                 </FormItem>
               )}
             />
-             <Controller control={form.control} name="latitud_destino" render={({ field }) => <input type="hidden" {...field} value={field.value === null ? "" : field.value} />} />
-             <Controller control={form.control} name="longitud_destino" render={({ field }) => <input type="hidden" {...field} value={field.value === null ? "" : field.value} />} />
+             <Controller control={form.control} name="latitud_destino" render={({ field }) => <input type="hidden" {...field} value={field.value === null ? "" : String(field.value)} />} />
+             <Controller control={form.control} name="longitud_destino" render={({ field }) => <input type="hidden" {...field} value={field.value === null ? "" : String(field.value)} />} />
           </CardContent>
         </Card>
 
-        <Card className="shadow-sm rounded-lg">
-          <CardHeader><CardTitle className="flex items-center text-lg gap-2"><Truck className="text-primary"/>Detalles del Servicio y Envío</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
+        <Card className="shadow-sm rounded-lg border border-border">
+          <CardHeader className="bg-muted/30"><CardTitle className="flex items-center text-lg gap-2 font-semibold text-foreground"><Truck className="text-primary"/>Detalles del Servicio y Envío</CardTitle></CardHeader>
+          <CardContent className="space-y-4 pt-4">
             <FormField
               control={form.control}
               name="tipo_servicio_id"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Tipo de Servicio*</FormLabel>
-                  <Select 
+                  <Select
                     onValueChange={(value) => {
                         field.onChange(value);
-                        form.setValue('precio', 0); 
+                        form.setValue('precio', 0); // Reset price when service changes
                         setCalculatedDistance(null);
-                        onShipmentCalculated(null); 
-                    }} 
-                    value={field.value} 
+                        onShipmentCalculated(null);
+                    }}
+                    value={field.value}
                     defaultValue={field.value}
                   >
                     <FormControl>
@@ -471,7 +506,7 @@ export const DosRuedasEnvioForm = React.forwardRef<DosRuedasEnvioFormRef, DosRue
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Horario inicial de retiro (HH:MM)</FormLabel>
-                    <FormControl><Input type="time" {...field} value={field.value ?? ""} /></FormControl>
+                    <FormControl><Input type="time" placeholder="Ej: 09:00" {...field} value={field.value ?? ""} /></FormControl>
                     <FormDescription>Desde que hora se puede retirar.</FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -483,7 +518,7 @@ export const DosRuedasEnvioForm = React.forwardRef<DosRuedasEnvioFormRef, DosRue
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Horario límite de entrega (HH:MM)</FormLabel>
-                    <FormControl><Input type="time" {...field} value={field.value ?? ""} /></FormControl>
+                    <FormControl><Input type="time" placeholder="Ej: 18:00" {...field} value={field.value ?? ""} /></FormControl>
                     <FormDescription>Hasta que hora se puede entregar.</FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -495,16 +530,16 @@ export const DosRuedasEnvioForm = React.forwardRef<DosRuedasEnvioFormRef, DosRue
               name="precio"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="flex items-center gap-1">
-                    <DollarSign size={16} /> Monto a cobrar (Calculado)
+                  <FormLabel className="flex items-center gap-1 font-medium">
+                    <DollarSign size={16} /> Monto a Cobrar (Calculado)
                     {isCalculatingPrice && <Loader2 className="h-4 w-4 animate-spin text-primary ml-2" />}
                   </FormLabel>
-                  <FormControl><Input type="number" step="0.01" placeholder="0.00" {...field} 
-                    readOnly 
-                    className="bg-muted/80 cursor-not-allowed font-semibold"
+                  <FormControl><Input type="number" step="0.01" placeholder="0.00" {...field}
+                    readOnly
+                    className="bg-muted/60 cursor-not-allowed font-semibold text-lg"
                     value={field.value ?? 0}
                   /></FormControl>
-                  <FormDescription>El precio se calcula automáticamente. Será confirmado por un operador.</FormDescription>
+                  <FormDescription>El precio se calcula y muestra en el resumen. Será confirmado por un operador.</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -522,11 +557,10 @@ export const DosRuedasEnvioForm = React.forwardRef<DosRuedasEnvioFormRef, DosRue
             />
           </CardContent>
         </Card>
+        {/* Submit button is now in DosRuedasEnvioSummary */}
       </form>
     </Form>
   );
 });
 
 DosRuedasEnvioForm.displayName = "DosRuedasEnvioForm";
-
-```

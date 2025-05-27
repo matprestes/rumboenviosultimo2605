@@ -127,13 +127,13 @@ export const TarifaDistanciaCalculadoraSchema = z.object({
     (val) => parseFloat(String(val)),
     z.number().positive("La distancia máxima debe ser un número positivo.")
   ),
-  precio_base: z.preprocess(
-    (val) => (val === "" || val === null || val === undefined ? null : parseFloat(String(val))),
-    z.number().min(0, "El precio base no puede ser negativo.").nullable().optional().default(null)
+  precio_base: z.preprocess( // Precio base opcional DENTRO del rango
+    (val) => (val === "" || val === null || val === undefined || isNaN(Number(val)) ? null : parseFloat(String(val))),
+    z.number().min(0, "El precio base del rango no puede ser negativo.").nullable().optional().default(null)
   ),
-  precio_por_km: z.preprocess( 
+  precio_por_km: z.preprocess( // Para la lógica "precio total del rango", este es el precio fijo.
     (val) => parseFloat(String(val)),
-    z.number().positive("El precio total para el rango debe ser un número positivo.")
+    z.number().min(0,"El precio para el rango debe ser un número positivo.").default(0) // Min 0 si puede ser gratis
   ),
   created_at: z.string().datetime().optional(),
   updated_at: z.string().datetime().optional(),
@@ -148,6 +148,7 @@ export const TarifaDistanciaCalculadoraSchema = z.object({
   }
 });
 export type TarifaDistanciaCalculadora = z.infer<typeof TarifaDistanciaCalculadoraSchema>;
+// For the form, tipo_servicio_id comes as a prop, not part of these direct form values
 export type TarifaDistanciaFormValues = Omit<TarifaDistanciaCalculadora, 'id' | 'created_at' | 'updated_at' | 'user_id' | 'tipo_servicio_id'>;
 
 
@@ -183,16 +184,20 @@ export const EnvioBaseSchema = z.object({
   tipo_servicio_id: z.string().uuid({ message: "Debe seleccionar un tipo de servicio."}).nullable().optional(),
   precio: z.preprocess(
     (val) => {
-      if (val === "" || val === null || val === undefined) return 0;
+      if (val === "" || val === null || val === undefined) return 0; // Default to 0 if empty/null/undefined
       const num = parseFloat(String(val));
-      return isNaN(num) ? 0 : num;
+      return isNaN(num) ? 0 : num; // Default to 0 if NaN
     },
     z.number().min(0, "El precio no puede ser negativo.").default(0)
   ),
   estado: EstadoEnvioEnum.default('pendiente_asignacion'),
   fecha_estimada_entrega: z.date().nullable().optional(),
-  horario_retiro_desde: z.string().regex(timeRegex, "Formato HH:MM inválido.").nullable().optional().default(null),
-  horario_entrega_hasta: z.string().regex(timeRegex, "Formato HH:MM inválido.").nullable().optional().default(null),
+  horario_retiro_desde: z.string()
+    .regex(timeRegex, { message: "Formato HH:MM inválido." })
+    .optional().nullable().default(null).or(z.literal("")),
+  horario_entrega_hasta: z.string()
+    .regex(timeRegex, { message: "Formato HH:MM inválido." })
+    .optional().nullable().default(null).or(z.literal("")),
   repartidor_asignado_id: z.string().uuid().nullable().optional(),
   notas_conductor: z.string().nullable().optional().default(""),
   detalles_adicionales: z.string().nullable().optional().default(""),
@@ -206,7 +211,7 @@ export const EnvioSchema = EnvioBaseSchema.superRefine((data, ctx) => {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       message: "Debe seleccionar un cliente remitente, una empresa de origen, o ingresar un nombre de cliente temporal.",
-      path: ["remitente_cliente_id"], 
+      path: ["remitente_cliente_id"],
     });
   }
   if (data.cliente_temporal_nombre && !data.cliente_temporal_telefono) {
@@ -231,11 +236,15 @@ export const DosRuedasEnvioFormSchema = z.object({
   nombre_destinatario: z.string().min(3, "El nombre del destinatario es requerido."),
   telefono_destinatario: z.string().min(7, "El teléfono del destinatario es requerido."),
   direccion_destino: z.string().min(5, "La dirección de entrega es requerida."),
-  latitud_destino: z.number().nullable().optional(), // ADDED
-  longitud_destino: z.number().nullable().optional(), // ADDED
+  latitud_destino: z.number().nullable().optional(),
+  longitud_destino: z.number().nullable().optional(),
   tipo_servicio_id: z.string().uuid("Debe seleccionar un tipo de servicio."),
-  horario_retiro_desde: z.string().regex(timeRegex, "Formato HH:MM inválido.").optional().nullable().default(""),
-  horario_entrega_hasta: z.string().regex(timeRegex, "Formato HH:MM inválido.").optional().nullable().default(""),
+  horario_retiro_desde: z.string()
+    .regex(timeRegex, { message: "Formato HH:MM inválido." })
+    .optional().nullable().default("").or(z.literal("")),
+  horario_entrega_hasta: z.string()
+    .regex(timeRegex, { message: "Formato HH:MM inválido." })
+    .optional().nullable().default("").or(z.literal("")),
   precio: z.preprocess(
     (val) => {
       if (val === "" || val === null || val === undefined) return 0;
@@ -293,25 +302,25 @@ export const RepartoSchema = z.object({
   user_id: z.string().uuid().nullable().optional(),
 });
 export type Reparto = z.infer<typeof RepartoSchema>;
-export type RepartoFormValues = Omit<Reparto, 'id' | 'created_at' | 'updated_at' | 'user_id' | 'estado'>; 
+export type RepartoFormValues = Omit<Reparto, 'id' | 'created_at' | 'updated_at' | 'user_id' | 'estado'>;
 
 export interface RepartoConDetalles extends Reparto {
   repartidores?: Pick<Repartidor, 'id' | 'nombre'> | null;
   empresas?: Pick<Empresa, 'id' | 'nombre' | 'latitud' | 'longitud' | 'direccion'> | null;
   paradas_count?: number;
-  paradas_reparto?: ParadaConDetalles[]; 
+  paradas_reparto?: ParadaConDetalles[];
 }
 
 // --- ParadaReparto Schemas ---
 export const ParadaRepartoSchema = z.object({
   id: z.string().uuid().optional(),
   reparto_id: z.string().uuid(),
-  envio_id: z.string().uuid().nullable().optional(), 
-  descripcion_parada: z.string().nullable().optional().default(""), 
+  envio_id: z.string().uuid().nullable().optional(),
+  descripcion_parada: z.string().nullable().optional().default(""),
   orden_visita: z.number().int().min(0, "El orden de visita no puede ser negativo.").nullable().optional(),
   estado_parada: EstadoEnvioEnum.default('asignado'),
-  hora_estimada_llegada: z.string().regex(timeRegex, "Formato HH:MM inválido.").nullable().optional().default(null),
-  hora_real_llegada: z.string().regex(timeRegex, "Formato HH:MM inválido.").nullable().optional().default(null),
+  hora_estimada_llegada: z.string().regex(timeRegex, "Formato HH:MM inválido.").nullable().optional().default(null).or(z.literal("")),
+  hora_real_llegada: z.string().regex(timeRegex, "Formato HH:MM inválido.").nullable().optional().default(null).or(z.literal("")),
   notas_parada: z.string().nullable().optional().default(""),
   created_at: z.string().datetime().optional(),
   updated_at: z.string().datetime().optional(),
@@ -320,8 +329,8 @@ export const ParadaRepartoSchema = z.object({
 export type ParadaReparto = z.infer<typeof ParadaRepartoSchema>;
 
 export interface ParadaConDetalles extends ParadaReparto {
-  envios?: EnvioConDetalles | null; 
-  repartos?: RepartoConDetalles | null; 
+  envios?: EnvioConDetalles | null;
+  repartos?: RepartoConDetalles | null;
 }
 
 
@@ -396,4 +405,4 @@ export interface MappableStop {
   location: { lat: number; lng: number };
 }
 
-```
+    
