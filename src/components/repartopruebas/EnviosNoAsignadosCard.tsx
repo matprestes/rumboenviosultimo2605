@@ -1,13 +1,12 @@
-
 // src/components/repartopruebas/EnviosNoAsignadosCard.tsx
 "use client";
 
-import type { EnvioMapa } from "@/app/repartoprueba/actions"; // Adjusted import path
+import type { EnvioMapa } from "@/app/repartoprueba/actions";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { PackageSearch, MapPin, Box, Weight, UserCircle2 } from "lucide-react";
-import { estadoEnvioEnum } from "@/lib/schemas"; // Import from schemas.ts
+import { EstadoEnvioEnum } from "@/lib/schemas"; // Corrected import
 
 interface EnviosNoAsignadosCardProps {
   envios: EnvioMapa[];
@@ -16,7 +15,7 @@ interface EnviosNoAsignadosCardProps {
 function getEstadoEnvioBadgeClass(estado: string | null): string {
     if (!estado) return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200 border-gray-300';
     // Ensure we use the enum values for comparison
-    if (estado === estadoEnvioEnum.Values.pendiente_asignacion) return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-700 dark:text-yellow-100 border-yellow-300';
+    if (estado === EstadoEnvioEnum.Values.pendiente_asignacion) return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-700 dark:text-yellow-100 border-yellow-300';
     // Add other states if they can appear here
     return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200 border-gray-300'; 
 }
