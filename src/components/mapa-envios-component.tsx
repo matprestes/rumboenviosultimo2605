@@ -15,9 +15,10 @@ interface MapaEnviosComponentProps {
 
 const API_KEY_COMPONENT = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 const MAR_DEL_PLATA_CENTER = { lat: -38.00228, lng: -57.55754 };
+const RUMBOS_ENVIOS_MAP_ID_ASIGNACION = "RUMBOS_MAP_ID_ASIGNACION"; 
 
-const UNASSIGNED_COLOR = '#FF5722'; 
-const SELECTED_UNASSIGNED_COLOR = '#FFC107'; 
+const UNASSIGNED_COLOR = '#FF5722'; // Orange
+const SELECTED_UNASSIGNED_COLOR = '#FFC107'; // Amber/Yellow
 
 export function MapaEnviosComponent({ 
   unassignedEnvios, 
@@ -27,10 +28,11 @@ export function MapaEnviosComponent({
   const mapRef = React.useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const [map, setMap] = React.useState<google.maps.Map | null>(null);
-  const [markers, setMarkers] = React.useState<google.maps.Marker[]>([]);
+  const [markers, setMarkers] = React.useState<google.maps.marker.AdvancedMarkerElement[]>([]);
   const [infoWindow, setInfoWindow] = React.useState<google.maps.InfoWindow | null>(null);
   const [isLoadingMap, setIsLoadingMap] = React.useState(true);
-  const [googleMaps, setGoogleMaps] = React.useState<typeof google | null>(null);
+  const [googleMapsApi, setGoogleMapsApi] = React.useState<typeof google | null>(null);
+  const [markerLibrary, setMarkerLibrary] = React.useState<google.maps.MarkerLibrary | null>(null);
   const [errorLoadingApi, setErrorLoadingApi] = React.useState<string | null>(null);
 
 
@@ -43,37 +45,54 @@ export function MapaEnviosComponent({
       return;
     }
 
-    getGoogleMapsApi().then((googleApi) => {
-      setGoogleMaps(googleApi);
-      if (mapRef.current && !map) {
-        const newMap = new googleApi.maps.Map(mapRef.current, {
-          center: MAR_DEL_PLATA_CENTER,
-          zoom: 12,
-          mapId: 'RUMBOS_ENVIOS_ASIGNACION_MAP',
-        });
-        setMap(newMap);
-        setInfoWindow(new googleApi.maps.InfoWindow());
+    getGoogleMapsApi().then(async (googleApi) => {
+      setGoogleMapsApi(googleApi);
+      try {
+        const lib = await googleApi.maps.importLibrary("marker") as google.maps.MarkerLibrary;
+        setMarkerLibrary(lib);
+        if (mapRef.current && !map) {
+          const newMap = new googleApi.maps.Map(mapRef.current, {
+            center: MAR_DEL_PLATA_CENTER,
+            zoom: 12,
+            mapId: RUMBOS_ENVIOS_MAP_ID_ASIGNACION,
+            mapTypeControl: false,
+            streetViewControl: false,
+            fullscreenControl: true,
+          });
+          setMap(newMap);
+          setInfoWindow(new googleApi.maps.InfoWindow());
+        }
+        setErrorLoadingApi(null);
+      } catch (e) {
+        const errorMessage = (e as Error).message || "No se pudo cargar la librería de marcadores avanzados.";
+        console.error("MapaEnviosComponent: Error importing marker library:", errorMessage);
+        toast({ title: "Error al cargar Mapa", description: errorMessage, variant: "destructive"});
+        setErrorLoadingApi(errorMessage);
+      } finally {
+        setIsLoadingMap(false);
       }
-      setIsLoadingMap(false);
-      setErrorLoadingApi(null); 
     }).catch(e => {
       const errorMessage = (e as Error).message || "No se pudo inicializar Google Maps.";
-      console.warn("MapaEnviosComponent: Fallo definitivo al cargar Google Maps API. El mapa no se renderizará. Error:", errorMessage);
+      console.error("MapaEnviosComponent: Fallo definitivo al cargar Google Maps API:", errorMessage);
       toast({ title: "Error al cargar Mapa", description: errorMessage, variant: "destructive"});
       setErrorLoadingApi(errorMessage);
       setIsLoadingMap(false);
-      setGoogleMaps(null); 
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Removed map and toast from dependencies, API loading should happen once.
+  }, []); 
 
 
   React.useEffect(() => {
-    if (!map || !googleMaps?.maps?.SymbolPath || !unassignedEnvios || errorLoadingApi) return;
+    if (!map || !googleMapsApi || !markerLibrary || !unassignedEnvios || errorLoadingApi) {
+        markers.forEach(marker => marker.map = null);
+        setMarkers([]);
+        return;
+    }
 
-    markers.forEach(marker => marker.setMap(null));
-    const newMarkers: google.maps.Marker[] = [];
-    const bounds = new googleMaps.maps.LatLngBounds();
+    markers.forEach(marker => marker.map = null);
+    const newMarkersArray: google.maps.marker.AdvancedMarkerElement[] = [];
+    const bounds = new googleMapsApi.maps.LatLngBounds();
+    const { AdvancedMarkerElement, PinElement } = markerLibrary;
 
 
     unassignedEnvios.forEach(envio => {
@@ -83,18 +102,20 @@ export function MapaEnviosComponent({
         
         bounds.extend(position);
 
-        const marker = new googleMaps.maps.Marker({
+        const pin = new PinElement({
+          background: isSelected ? SELECTED_UNASSIGNED_COLOR : UNASSIGNED_COLOR,
+          borderColor: "white",
+          glyphColor: "white",
+          // No glyph text for simple circle, or use a small dot/icon if desired
+          // glyph: "●", 
+          // scale: isSelected ? 1.2 : 1.0
+        });
+
+        const marker = new AdvancedMarkerElement({
           position: position,
           map: map,
+          content: pin.element,
           title: `Envío ID: ${envio.id?.substring(0,8)}\nDestino: ${envio.direccion_destino}`,
-          icon: {
-            path: googleMaps.maps.SymbolPath.CIRCLE, 
-            scale: isSelected ? 10 : 7, 
-            fillColor: isSelected ? SELECTED_UNASSIGNED_COLOR : UNASSIGNED_COLOR,
-            fillOpacity: 1,
-            strokeWeight: 1.5,
-            strokeColor: '#ffffff'
-          },
           zIndex: isSelected ? 100 : 1,
         });
 
@@ -104,7 +125,7 @@ export function MapaEnviosComponent({
             const clienteInfo = envio.clientes ? `${envio.clientes.nombre} ${envio.clientes.apellido}` : envio.cliente_temporal_nombre;
             const content = `
               <div style="font-family: sans-serif; padding: 5px; max-width: 250px;">
-                <h4 style="margin:0 0 5px 0; font-size: 1em; color: ${UNASSIGNED_COLOR};">Envío No Asignado</h4>
+                <h4 style="margin:0 0 5px 0; font-size: 1em; color: ${isSelected ? SELECTED_UNASSIGNED_COLOR : UNASSIGNED_COLOR};">Envío No Asignado</h4>
                 <p style="margin:0 0 3px 0; font-size: 0.9em;"><strong>ID:</strong> ${envio.id?.substring(0,8)}...</p>
                 <p style="margin:0 0 3px 0; font-size: 0.9em;"><strong>Destino:</strong> ${envio.direccion_destino}</p>
                 ${clienteInfo ? `<p style="margin:0 0 3px 0; font-size: 0.9em;"><strong>Cliente:</strong> ${clienteInfo}</p>` : ''}
@@ -115,23 +136,23 @@ export function MapaEnviosComponent({
             infoWindow.open(map, marker);
           }
         });
-        newMarkers.push(marker);
+        newMarkersArray.push(marker);
       }
     });
-    setMarkers(newMarkers);
+    setMarkers(newMarkersArray);
 
-    if (newMarkers.length > 0 && !bounds.isEmpty()) {
+    if (newMarkersArray.length > 0 && !bounds.isEmpty()) {
         map.fitBounds(bounds);
-         if (newMarkers.length === 1 && map.getZoom() && map.getZoom() > 15) { 
+         if (newMarkersArray.length === 1 && map.getZoom() && map.getZoom() > 15) { 
             map.setZoom(15);
         }
-    } else if (newMarkers.length === 0 && map) {
+    } else if (newMarkersArray.length === 0 && map) {
        map.setCenter(MAR_DEL_PLATA_CENTER);
        map.setZoom(12);
     }
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, googleMaps, unassignedEnvios, selectedEnvioId, errorLoadingApi]); // infoWindow and onUnassignedEnvioSelect are stable
+  }, [map, googleMapsApi, markerLibrary, unassignedEnvios, selectedEnvioId, errorLoadingApi]);
 
   if (isLoadingMap && API_KEY_COMPONENT) {
     return (
@@ -152,11 +173,11 @@ export function MapaEnviosComponent({
     );
   }
   
-  if (!map || !googleMaps) { 
+  if (!map || !googleMapsApi || !markerLibrary) { 
     return (
       <div className="w-full h-full flex justify-center items-center bg-muted/50 rounded-md aspect-video">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <p className="ml-2 text-muted-foreground">Inicializando mapa...</p>
+        <p className="ml-2 text-muted-foreground">Inicializando API de mapa...</p>
       </div>
     );
   }
