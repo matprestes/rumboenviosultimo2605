@@ -3,7 +3,7 @@
 "use server";
 
 import { supabase } from "@/lib/supabase/client";
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, isValid } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type {
     Envio,
@@ -13,20 +13,22 @@ import type {
     TipoPaquete,
     Reparto,
     ParadaReparto,
-    EstadoEnvio, // This is the type alias, not the Zod enum object
-    TipoParada
+    EstadoEnvio, // Type alias
+    TipoParada, // Type alias
+    EstadoReparto // Type alias
 } from "@/lib/schemas";
-import { EstadoEnvioEnum, tipoParadaEnum } from "@/lib/schemas"; // Correctly import EstadoEnvioEnum
+import { EstadoEnvioEnum, tipoParadaEnum } from "@/lib/schemas";
 
 
 // Specific type for the filter dropdown items
 export interface RepartoParaFiltro {
   id: string;
   label: string;
-  tipo_reparto: 'individual' | 'viaje_empresa' | 'viaje_empresa_lote';
+  tipo_reparto: 'individual' | 'viaje_empresa' | 'viaje_empresa_lote'; // For context
   empresa_nombre?: string | null;
   repartidor_nombre?: string | null;
   fecha_reparto?: string | null; // YYYY-MM-DD
+  estado?: EstadoReparto | null; // ADDED
 }
 
 // Specific type for map markers / list items on this page
@@ -55,6 +57,7 @@ export async function getRepartosForMapFilterAction(): Promise<{ data: RepartoPa
     .select(`
       id,
       fecha_reparto,
+      estado, 
       repartidores ( nombre ),
       empresas ( nombre )
     `)
@@ -67,8 +70,14 @@ export async function getRepartosForMapFilterAction(): Promise<{ data: RepartoPa
   }
 
   const formattedData: RepartoParaFiltro[] = data.map((r) => {
-    const reparto = r as Reparto & { repartidores: Pick<Repartidor, 'nombre'> | null, empresas: Pick<Empresa, 'nombre'> | null };
-    const fecha = reparto.fecha_reparto ? format(parseISO(reparto.fecha_reparto), "dd/MM", { locale: es }) : "Sin Fecha";
+    // Cast to include the nested structures correctly
+    const reparto = r as Reparto & { 
+        repartidores: Pick<Repartidor, 'nombre'> | null, 
+        empresas: Pick<Empresa, 'nombre'> | null 
+    };
+    const fecha = reparto.fecha_reparto && isValid(parseISO(reparto.fecha_reparto)) 
+        ? format(parseISO(reparto.fecha_reparto), "dd/MM/yy", { locale: es }) 
+        : "Sin Fecha";
     const repartidor = reparto.repartidores?.nombre || "N/A";
     const empresa = reparto.empresas?.nombre;
     let label = `${fecha} - ${repartidor}`;
@@ -76,7 +85,7 @@ export async function getRepartosForMapFilterAction(): Promise<{ data: RepartoPa
 
     if (empresa) {
       label += ` (${empresa})`;
-      tipo_reparto_val = 'viaje_empresa_lote';
+      tipo_reparto_val = 'viaje_empresa_lote'; // Assuming empresa_asociada_id implies lote
     }
     return {
       id: reparto.id!,
@@ -84,7 +93,8 @@ export async function getRepartosForMapFilterAction(): Promise<{ data: RepartoPa
       tipo_reparto: tipo_reparto_val,
       empresa_nombre: empresa,
       repartidor_nombre: repartidor,
-      fecha_reparto: reparto.fecha_reparto
+      fecha_reparto: reparto.fecha_reparto, // YYYY-MM-DD
+      estado: reparto.estado, // ADDED
     };
   });
 
@@ -106,7 +116,7 @@ export async function getEnviosNoAsignadosGeolocalizadosAction(): Promise<{ data
       peso_kg,
       estado
     `)
-    .eq("estado", EstadoEnvioEnum.Values.pendiente_asignacion) // Use the Zod enum object here
+    .eq("estado", EstadoEnvioEnum.Values.pendiente_asignacion) 
     .not("latitud_destino", "is", null)
     .not("longitud_destino", "is", null)
     .order("created_at", { ascending: true });
@@ -126,7 +136,7 @@ export async function getEnviosNoAsignadosGeolocalizadosAction(): Promise<{ data
     tipo_paquete_nombre: e.tipos_paquete?.nombre || null,
     package_weight: e.peso_kg,
     tipo_parada: tipoParadaEnum.Values.entrega_cliente,
-    orden: null,
+    orden: null, // Unassigned envíos don't have an order in a reparto yet
     envio_id_original: e.id,
   }));
 
@@ -138,6 +148,9 @@ export async function getEnviosGeolocalizadosAction(
   repartoId: string | null
 ): Promise<{ data: EnvioMapa[] | null; error: string | null }> {
   if (!repartoId || repartoId === "all") {
+    // For "all", fetch all assigned envios that are geolocated. 
+    // This could be very large, so consider pagination or more specific filters if needed.
+    // For simplicity, we'll just fetch recent ones or limit.
     const { data, error } = await supabase
       .from("envios")
       .select(`
@@ -149,18 +162,20 @@ export async function getEnviosGeolocalizadosAction(
         clientes!envios_remitente_cliente_id_fkey ( nombre, apellido ),
         tipos_paquete ( nombre ),
         peso_kg,
-        paradas_reparto ( orden_visita, reparto_id, repartos ( repartidores ( nombre ), empresas ( nombre ), fecha_reparto ) )
+        paradas_reparto!inner ( orden_visita, reparto_id, repartos!inner ( repartidores ( nombre ), empresas ( nombre ), fecha_reparto ) )
       `)
-      .not("latitud_destino", "is", null) // Only fetch if destination is geocoded
+      .not("latitud_destino", "is", null)
+      .not("longitud_destino", "is", null)
+      .not("paradas_reparto", "is", null) // Ensure it's part of a reparto
       .order("created_at", { ascending: false })
-      .limit(100);
+      .limit(100); // Limit for safety
 
     if (error) {
-      console.error("Error fetching all geolocated envios:", error);
+      console.error("Error fetching all geolocated assigned envios:", error);
       return { data: null, error: error.message };
     }
-    const enviosMapa: EnvioMapa[] = (data as (Envio & { clientes: Pick<Cliente, 'nombre' | 'apellido'> | null, tipos_paquete: Pick<TipoPaquete, 'nombre'> | null, paradas_reparto: (ParadaReparto & { repartos: (Reparto & { repartidores: Pick<Repartidor, 'nombre'> | null, empresas: Pick<Empresa, 'nombre'> | null}) | null })[] | null })[]).map(e => ({
-      id: e.id!,
+    const enviosMapa: EnvioMapa[] = (data as any[]).map(e => ({
+      id: e.id!, // Use envio.id for the main ID here
       latitud: e.latitud_destino,
       longitud: e.longitud_destino,
       nombre_cliente: e.clientes ? `${e.clientes.nombre} ${e.clientes.apellido}` : e.cliente_temporal_nombre,
@@ -183,7 +198,7 @@ export async function getEnviosGeolocalizadosAction(
     return { data: unassignedData, error };
   }
 
-  // Fetch specific reparto
+  // Fetch specific reparto and its paradas
   const { data: repartoData, error: repartoError } = await supabase
     .from("repartos")
     .select(`
@@ -224,19 +239,19 @@ export async function getEnviosGeolocalizadosAction(
 
   const enviosMapa: EnvioMapa[] = [];
 
-  // Add empresa pickup point if it exists and has coordinates
+  // Add empresa pickup point if it exists and has coordinates (as "orden 0")
   if (reparto.empresas && reparto.empresas.latitud != null && reparto.empresas.longitud != null) {
     enviosMapa.push({
-      id: `empresa_pickup_${reparto.id}`, // Unique ID for this map point
+      id: `empresa_pickup_${reparto.id}`, 
       latitud: reparto.empresas.latitud,
       longitud: reparto.empresas.longitud,
       nombre_cliente: reparto.empresas.nombre,
       client_location: reparto.empresas.direccion,
-      status: null, // Not an "envio" status
+      status: null, 
       tipo_paquete_nombre: null,
       package_weight: null,
       tipo_parada: tipoParadaEnum.Values.retiro_empresa,
-      orden: 0, // Typically order 0 for company pickup
+      orden: 0, 
       reparto_id: reparto.id,
       repartidor_nombre: reparto.repartidores?.nombre || null,
       empresa_nombre: reparto.empresas.nombre,
@@ -252,33 +267,32 @@ export async function getEnviosGeolocalizadosAction(
         longitud: parada.envios.longitud_destino,
         nombre_cliente: parada.envios.clientes ? `${parada.envios.clientes.nombre} ${parada.envios.clientes.apellido}` : parada.envios.cliente_temporal_nombre,
         client_location: parada.envios.direccion_destino,
-        status: parada.estado_parada,
+        status: parada.estado_parada, // Use parada.estado_parada for assigned envios
         tipo_paquete_nombre: parada.envios.tipos_paquete?.nombre || null,
         package_weight: parada.envios.peso_kg,
         tipo_parada: tipoParadaEnum.Values.entrega_cliente,
-        orden: parada.orden_visita,
+        orden: parada.orden_visita, // This should start from 1 for deliveries
         envio_id_original: parada.envios.id,
         reparto_id: reparto.id,
         repartidor_nombre: reparto.repartidores?.nombre || null,
         empresa_nombre: reparto.empresas?.nombre || null,
         fecha_reparto: reparto.fecha_reparto,
       });
-    } else if (!parada.envios && parada.descripcion_parada && reparto.empresas?.latitud != null && reparto.empresas?.longitud != null && parada.descripcion_parada.toLowerCase().includes('retiro')) {
-      // This handles explicit "Retiro en Empresa" paradas if they are distinct from the implicit one above
-      // And if the implicit one wasn't already added or has different details.
-      // Ensure not to duplicate the company pickup point if already added.
+    } else if (!parada.envios && parada.descripcion_parada && parada.descripcion_parada.toLowerCase().includes('retiro') && reparto.empresas?.latitud != null && reparto.empresas?.longitud != null) {
+      // Handle explicit "Retiro en Empresa" paradas that might not have an envio_id
+      // Only add if not already covered by the implicit company pickup point above
       if (!enviosMapa.some(e => e.id === `empresa_pickup_${reparto.id}` && e.tipo_parada === tipoParadaEnum.Values.retiro_empresa)) {
         enviosMapa.push({
-            id: parada.id!, // Use parada_id
+            id: parada.id!, 
             latitud: reparto.empresas.latitud,
             longitud: reparto.empresas.longitud,
             nombre_cliente: reparto.empresas.nombre,
             client_location: reparto.empresas.direccion || parada.descripcion_parada,
-            status: parada.estado_parada,
+            status: parada.estado_parada, 
             tipo_paquete_nombre: null,
             package_weight: null,
             tipo_parada: tipoParadaEnum.Values.retiro_empresa,
-            orden: parada.orden_visita, // Use this parada's order
+            orden: parada.orden_visita, // Could be 0 if it's the main pickup for a lote
             reparto_id: reparto.id,
             repartidor_nombre: reparto.repartidores?.nombre || null,
             empresa_nombre: reparto.empresas.nombre,
@@ -293,3 +307,4 @@ export async function getEnviosGeolocalizadosAction(
 
   return { data: enviosMapa, error: null };
 }
+

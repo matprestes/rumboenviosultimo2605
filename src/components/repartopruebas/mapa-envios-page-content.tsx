@@ -33,35 +33,42 @@ export default function MapaEnviosPageContent({
     async function fetchMapData() {
       setIsLoadingMapaData(true);
       setErrorMapa(null);
-      setCalculatedDistance(null); // Reset distance when filter changes
+      setCalculatedDistance(null); 
 
       if (selectedRepartoId === "unassigned") {
         setEnviosParaMapa(initialUnassignedEnviosData);
-        setIsLoadingMapaData(false);
       } else {
-        const { data, error } = await getEnviosGeolocalizadosAction(selectedRepartoId);
+        const { data, error } = await getEnviosGeolocalizadosAction(selectedRepartoId); // 'all' or specific ID
         if (error) {
           setErrorMapa(error);
           setEnviosParaMapa([]);
         } else {
           setEnviosParaMapa(data || []);
         }
-        setIsLoadingMapaData(false);
       }
+      setIsLoadingMapaData(false);
     }
     fetchMapData();
   }, [selectedRepartoId, initialUnassignedEnviosData]);
 
   const isFilteredBySpecificReparto = !!selectedRepartoId && selectedRepartoId !== "all" && selectedRepartoId !== "unassigned";
+  
+  const selectedRepartoDetails = React.useMemo(() => {
+    if (!selectedRepartoId || selectedRepartoId === "all" || selectedRepartoId === "unassigned") {
+      return null;
+    }
+    return repartosParaFiltro.find(r => r.id === selectedRepartoId) || null;
+  }, [selectedRepartoId, repartosParaFiltro]);
+
 
   if (errorMapa) {
     return (
-      <div className="flex flex-col items-center justify-center h-[calc(100vh-300px)] border-2 border-dashed border-destructive/30 rounded-2xl bg-card shadow-md p-8 text-center">
+      <div className="flex flex-col items-center justify-center h-[calc(100vh-200px)] border-2 border-dashed border-destructive/30 rounded-2xl bg-card shadow-md p-8 text-center">
         <AlertTriangle className="w-16 h-16 text-destructive mb-4" />
-        <h2 className="text-xl font-semibold text-destructive mb-2">Error al Cargar Envíos del Mapa</h2>
+        <h2 className="text-xl font-semibold text-destructive mb-2">Error al Cargar Datos del Mapa</h2>
         <p className="text-destructive/80 max-w-md">{errorMapa}</p>
         <p className="text-sm text-muted-foreground mt-2">
-          Por favor, verifique su conexión o si hay envíos geolocalizados para el filtro seleccionado.
+          Intente seleccionar otro filtro o recargar la página.
         </p>
       </div>
     );
@@ -69,25 +76,26 @@ export default function MapaEnviosPageContent({
   
   return (
     <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 xl:gap-6 flex-grow h-full">
-      <div className="lg:col-span-1 space-y-4 xl:space-y-6 flex flex-col min-h-0">
+      <div className="lg:col-span-1 space-y-4 xl:space-y-6 flex flex-col min-h-0"> {/* Sidebar column */}
         <RepartoMapFilter repartos={repartosParaFiltro} currentRepartoId={selectedRepartoId} />
         <MapaEnviosSummary
             displayedEnvios={enviosParaMapa || []}
             unassignedEnviosCount={initialUnassignedEnviosCount}
-            selectedRepartoId={selectedRepartoId}
-            repartosList={repartosParaFiltro}
+            selectedRepartoDetails={selectedRepartoDetails} // Pass full details
             calculatedDistanceKm={calculatedDistance}
         />
+        {/* Show Unassigned Envios card if "unassigned" or "all" is selected and there are unassigned envios */}
         {(selectedRepartoId === "all" || selectedRepartoId === "unassigned" || !selectedRepartoId) && initialUnassignedEnviosCount > 0 && (
             <EnviosNoAsignadosCard envios={initialUnassignedEnviosData} />
         )}
-        {isFilteredBySpecificReparto && initialUnassignedEnviosCount > 0 && (
+        {/* Show it also if filtering by a specific reparto, to allow assignment from this view later (optional) */}
+         {isFilteredBySpecificReparto && initialUnassignedEnviosCount > 0 && initialUnassignedEnviosData.length > 0 && (
              <EnviosNoAsignadosCard envios={initialUnassignedEnviosData} />
         )}
       </div>
-      <div className="lg:col-span-3 h-[50vh] md:h-[60vh] lg:h-full min-h-[400px] rounded-2xl overflow-hidden shadow-md border border-border/50">
+      <div className="lg:col-span-3 h-[50vh] md:h-[60vh] lg:h-full min-h-[400px] rounded-2xl overflow-hidden shadow-md border border-border/30 bg-muted/10"> {/* Map column */}
         {isLoadingMapaData ? (
-            <div className="flex items-center justify-center h-full bg-muted/20 rounded-lg">
+            <div className="flex items-center justify-center h-full bg-background rounded-lg">
                 <Loader2 className="h-10 w-10 animate-spin text-primary"/>
                 <p className="ml-3 text-muted-foreground">Cargando datos del mapa...</p>
             </div>
@@ -95,7 +103,7 @@ export default function MapaEnviosPageContent({
             <MapaEnviosView
                 envios={enviosParaMapa || []}
                 isFilteredByReparto={isFilteredBySpecificReparto}
-                selectedEnvioIdForPopup={null} 
+                selectedEnvioIdForPopup={null} // This page doesn't directly select markers for popup yet
                 onDistanceCalculated={setCalculatedDistance}
             />
         )}

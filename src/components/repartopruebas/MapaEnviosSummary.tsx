@@ -1,11 +1,12 @@
+
 // src/components/repartopruebas/MapaEnviosSummary.tsx
 "use client";
 
 import type { EnvioMapa, RepartoParaFiltro } from "@/app/repartoprueba/actions";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Layers, PackageSearch, Truck, Building, Route, MapPin, Info, Dot, CalendarDays, UserCircle, Hash } from "lucide-react";
-import { tipoParadaEnum, EstadoRepartoEnum } from "@/lib/schemas"; // Import enums for status comparison
+import { Layers, PackageSearch, Truck, Building, Route, MapPin, Info, CalendarDays, UserCircle, Hash, Milestone } from "lucide-react";
+import { tipoParadaEnum, EstadoRepartoEnum } from "@/lib/schemas"; 
 import { cn } from "@/lib/utils";
 import { format, parseISO, isValid } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -13,9 +14,8 @@ import { es } from 'date-fns/locale';
 interface MapaEnviosSummaryProps {
   displayedEnvios: EnvioMapa[];
   unassignedEnviosCount: number;
-  selectedRepartoId?: string | null;
-  repartosList: RepartoParaFiltro[];
-  calculatedDistanceKm?: number | null; // Nueva prop para la distancia
+  selectedRepartoDetails?: RepartoParaFiltro | null; // Updated to allow null for general view
+  calculatedDistanceKm?: number | null; 
 }
 
 function getEstadoRepartoBadgeClass(estado: string | null | undefined): string {
@@ -37,23 +37,12 @@ function getEstadoRepartoDisplayName(estadoValue: string | null | undefined) {
 export function MapaEnviosSummary({
   displayedEnvios,
   unassignedEnviosCount,
-  selectedRepartoId,
-  repartosList,
+  selectedRepartoDetails,
   calculatedDistanceKm,
 }: MapaEnviosSummaryProps) {
 
-  const getSelectedRepartoDetails = () => {
-    if (!selectedRepartoId || selectedRepartoId === "all" || selectedRepartoId === "unassigned") {
-      return null;
-    }
-    // Need to find the full reparto object, not just RepartoParaFiltro if we need status
-    // For now, repartosList is RepartoParaFiltro which doesn't have status.
-    // This might need adjustment in how data is passed if we need reparto status here.
-    return repartosList.find(r => r.id === selectedRepartoId);
-  };
-
-  const selectedRepartoInfo = getSelectedRepartoDetails();
-
+  const totalParadasEnMapa = displayedEnvios.length;
+  
   const totalParadasEntrega = displayedEnvios.filter(
     (envio) => envio.tipo_parada === tipoParadaEnum.Values.entrega_cliente
   ).length;
@@ -66,82 +55,87 @@ export function MapaEnviosSummary({
   let IconoPrincipal = Layers;
   let subtitulo = "Todos los envíos geolocalizados";
 
-  if (selectedRepartoInfo) {
+  if (selectedRepartoDetails) {
     tituloPrincipal = "Resumen del Reparto";
-    IconoPrincipal = selectedRepartoInfo.tipo_reparto === 'individual' ? Route : Building;
-    subtitulo = selectedRepartoInfo.label || "Detalles del reparto";
-  } else if (selectedRepartoId === "unassigned") {
+    IconoPrincipal = selectedRepartoDetails.tipo_reparto === 'individual' ? Route : Building;
+    subtitulo = selectedRepartoDetails.label || "Detalles del reparto";
+  } else if (selectedRepartoDetails === null && unassignedEnviosCount > 0 && totalParadasEnMapa === unassignedEnviosCount) { // Specifically "Unassigned" filter
     tituloPrincipal = "Envíos No Asignados";
     IconoPrincipal = PackageSearch;
     subtitulo = `Total: ${unassignedEnviosCount} envíos pendientes de asignación.`;
-  } else if (selectedRepartoId === "all") {
-     subtitulo = "Mostrando todos los envíos asignados y geolocalizados.";
+  } else if (selectedRepartoDetails === null) { // "All assigned" filter or no filter
+     subtitulo = `Mostrando ${totalParadasEnMapa} paradas en el mapa.`;
   }
 
 
   return (
     <Card className="rounded-2xl shadow-md">
-      <CardHeader className="p-4 pb-3">
+      <CardHeader className="p-4 pb-3 border-b">
         <CardTitle className="text-lg font-semibold flex items-center gap-2">
             <IconoPrincipal size={18} className="text-primary flex-shrink-0"/>
             <span className="truncate">{tituloPrincipal}</span>
         </CardTitle>
         <CardDescription className="text-xs truncate">{subtitulo}</CardDescription>
       </CardHeader>
-      <CardContent className="p-4 pt-2 space-y-2 text-sm">
-        {selectedRepartoInfo && (
+      <CardContent className="p-4 pt-3 space-y-1.5 text-sm">
+        {selectedRepartoDetails && (
           <>
             <div className="flex items-center gap-1.5 text-muted-foreground">
               <UserCircle size={14} className="text-blue-500 flex-shrink-0" />
-              <span className="text-xs">Repartidor: <span className="font-medium text-foreground truncate">{selectedRepartoInfo.repartidor_nombre || "N/A"}</span></span>
+              <span className="text-xs">Repartidor: <span className="font-medium text-foreground truncate">{selectedRepartoDetails.repartidor_nombre || "N/A"}</span></span>
             </div>
-            {selectedRepartoInfo.fecha_reparto && isValid(parseISO(selectedRepartoInfo.fecha_reparto)) && (
+            {selectedRepartoDetails.fecha_reparto && isValid(parseISO(selectedRepartoDetails.fecha_reparto)) && (
                 <div className="flex items-center gap-1.5 text-muted-foreground">
                     <CalendarDays size={14} className="text-green-500 flex-shrink-0" />
-                    <span className="text-xs">Fecha: <span className="font-medium text-foreground">{format(parseISO(selectedRepartoInfo.fecha_reparto), "PPP", {locale: es})}</span></span>
+                    <span className="text-xs">Fecha: <span className="font-medium text-foreground">{format(parseISO(selectedRepartoDetails.fecha_reparto), "PPP", {locale: es})}</span></span>
                 </div>
             )}
-             {/* Placeholder for reparto status - needs data from a full Reparto object */}
-            {/* <div className="flex items-center gap-1.5">
-              <Badge variant="outline" className={cn("text-xs", getEstadoRepartoBadgeClass(selectedRepartoInfo.estado))}> {/* Assuming selectedRepartoInfo will have 'estado' */}
-            {/*    {getEstadoRepartoDisplayName(selectedRepartoInfo.estado)}
-              </Badge>
-            </div> */}
+            {selectedRepartoDetails.estado && (
+                <div className="flex items-center gap-1.5">
+                    <Badge variant="outline" className={cn("text-xs capitalize px-2 py-0.5", getEstadoRepartoBadgeClass(selectedRepartoDetails.estado))}>
+                        {getEstadoRepartoDisplayName(selectedRepartoDetails.estado)}
+                    </Badge>
+                </div>
+            )}
           </>
         )}
 
-        <div className="flex items-center gap-1.5 text-muted-foreground">
+        <div className="flex items-center gap-1.5 text-muted-foreground pt-1">
           <Hash size={14} className="text-indigo-500 flex-shrink-0" />
-          <span className="text-xs">Paradas de Entrega (en mapa): <span className="font-medium text-foreground">{totalParadasEntrega}</span></span>
+          <span className="text-xs">Total Paradas en Mapa: <span className="font-medium text-foreground">{totalParadasEnMapa}</span></span>
         </div>
-         {totalParadasRetiroEmpresa > 0 && (
+        {totalParadasRetiroEmpresa > 0 && (
             <div className="flex items-center gap-1.5 text-muted-foreground">
                 <Building size={14} className="text-teal-500 flex-shrink-0" />
-                <span className="text-xs">Retiros en Empresa (en mapa): <span className="font-medium text-foreground">{totalParadasRetiroEmpresa}</span></span>
+                <span className="text-xs">Puntos de Retiro (Empresa): <span className="font-medium text-foreground">{totalParadasRetiroEmpresa}</span></span>
             </div>
         )}
-        {isFilteredByReparto(selectedRepartoId) && calculatedDistanceKm !== null && calculatedDistanceKm !== undefined && (
+         <div className="flex items-center gap-1.5 text-muted-foreground">
+            <MapPin size={14} className="text-red-500 flex-shrink-0" />
+            <span className="text-xs">Paradas de Entrega (Clientes): <span className="font-medium text-foreground">{totalParadasEntrega}</span></span>
+        </div>
+
+        {selectedRepartoDetails && calculatedDistanceKm !== null && calculatedDistanceKm !== undefined && (
             <div className="flex items-center gap-1.5 text-muted-foreground">
-                <Route size={14} className="text-purple-500 flex-shrink-0" />
-                <span className="text-xs">Distancia Estimada: <span className="font-medium text-foreground">{calculatedDistanceKm.toFixed(2)} km</span></span>
+                <Milestone size={14} className="text-purple-500 flex-shrink-0" />
+                <span className="text-xs">Distancia Estimada Ruta: <span className="font-medium text-foreground">{calculatedDistanceKm.toFixed(2)} km</span></span>
             </div>
         )}
-         {isFilteredByReparto(selectedRepartoId) && (
+         {selectedRepartoDetails && (
             <div className="flex items-center gap-1.5 text-muted-foreground">
                 <Info size={14} className="text-gray-500 flex-shrink-0" />
-                <span className="text-xs">Tiempo Estimado: <span className="font-medium text-foreground">N/A</span></span>
+                <span className="text-xs">Tiempo Estimado Ruta: <span className="font-medium text-foreground">N/A</span></span>
             </div>
         )}
 
-
-        {(selectedRepartoId === "all" || selectedRepartoId === "unassigned" || !selectedRepartoId) && unassignedEnviosCount > 0 && (
-           <div className="flex items-center gap-1.5 text-muted-foreground pt-1.5 mt-1.5 border-t border-border/50">
+        {(selectedRepartoDetails === null) && unassignedEnviosCount > 0 && (
+           <div className="flex items-center gap-1.5 text-muted-foreground pt-1.5 mt-1.5 border-t border-border/30">
             <PackageSearch size={14} className="text-orange-500 flex-shrink-0" />
             <span className="text-xs">Envíos No Asignados (Global): <span className="font-medium text-foreground">{unassignedEnviosCount}</span></span>
           </div>
         )}
         {displayedEnvios.length === 0 && selectedRepartoId !== "unassigned" && (
-            <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400 pt-1.5">
+            <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400 pt-1.5 mt-1.5 border-t border-border/30">
                 <Info size={14} className="flex-shrink-0" />
                 <span className="text-xs">Sin paradas geolocalizadas para este filtro.</span>
             </div>
@@ -150,9 +144,3 @@ export function MapaEnviosSummary({
     </Card>
   );
 }
-
-function isFilteredByReparto(repartoId?: string | null): boolean {
-    return !!repartoId && repartoId !== "all" && repartoId !== "unassigned";
-}
-
-    

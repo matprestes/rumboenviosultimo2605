@@ -1,3 +1,4 @@
+
 // src/components/repartopruebas/MapaEnviosView.tsx
 "use client";
 
@@ -12,12 +13,12 @@ interface MapaEnviosViewProps {
   envios: EnvioMapa[];
   isFilteredByReparto: boolean;
   selectedEnvioIdForPopup?: string | null;
-  onDistanceCalculated?: (distance: number | null) => void; // Callback para pasar la distancia
+  onDistanceCalculated?: (distance: number | null) => void;
 }
 
 const MAR_DEL_PLATA_CENTER = { lat: -38.0055, lng: -57.5426 };
 const INITIAL_ZOOM = 12;
-const RUMBOS_ENVIOS_MAP_ID_GENERAL = "RUMBOS_MAP_ID_GENERAL_VIEW_2"; // Map ID
+const RUMBOS_ENVIOS_MAP_ID_GENERAL = "RUMBOS_MAP_ID_GENERAL_VIEW_3"; // Updated Map ID slightly
 
 function getPinConfig(
     status: string | null,
@@ -26,30 +27,32 @@ function getPinConfig(
     PinElement: typeof google.maps.marker.PinElement | undefined,
     orden?: number | null
 ): google.maps.marker.PinElementConfig  {
-    if (!PinElement) return { glyph: "" }; // Fallback if PinElement is not available
+    if (!PinElement) return { glyph: "" }; 
 
-    let background = '#BDBDBD'; // Default Lighter Grey for unknown/generic
+    let background = '#BDBDBD'; // Default Grey
     let borderColor = '#9E9E9E';
-    let glyphText: string | HTMLElement | URL = orden !== null && orden !== undefined ? String(orden) : "";
-    let scale = isSelected ? 1.3 : 1.0; // Slightly larger if selected
+    let glyphText: string | HTMLElement | URL = orden != null && orden > 0 ? String(orden) : ""; // Display order for deliveries
+    let scale = isSelected ? 1.3 : 1.0;
 
     if (tipoParada === tipoParadaEnum.Values.retiro_empresa) {
-        background = '#1E90FF'; // DodgerBlue
-        borderColor = '#106AB8';
-        glyphText = "P"; // Pickup (Empresa)
-        scale = 1.2;
+        background = '#1976D2'; // Blue 700
+        borderColor = '#0D47A1'; // Blue 900
+        glyphText = new PinElement({ // Using a PinElement for the building/pickup icon
+            glyph: new URL('data:image/svg+xml;charset=UTF-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white" width="18px" height="18px"><path d="M0 0h24v24H0z" fill="none"/><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>'),
+        }).element;
+        scale = isSelected ? 1.4 : 1.2;
     } else if (tipoParada === tipoParadaEnum.Values.retiro_individual_origen) {
         background = '#FF8C00'; // DarkOrange
         borderColor = '#CC7000';
-        glyphText = orden !== null && orden !== undefined ? `P${orden}` : "P";
+        glyphText = orden != null ? `P${orden}` : "P"; // Pickup for individual
     } else { // entrega_cliente or otro
         switch (status) {
-            case EstadoEnvioEnum.Values.pendiente_asignacion: background = '#FFC107'; borderColor = '#FFA000'; glyphText = orden !== null && orden !== undefined ? String(orden) : "!"; break; // Amber
+            case EstadoEnvioEnum.Values.pendiente_asignacion: background = '#FFC107'; borderColor = '#FFA000'; glyphText = "!"; break; // Amber
             case EstadoEnvioEnum.Values.asignado: background = '#4682B4'; borderColor = '#3671A3'; break; // SteelBlue
             case EstadoEnvioEnum.Values.en_camino: background = '#FFA500'; borderColor = '#D98C00'; break; // Orange
-            case EstadoEnvioEnum.Values.entregado: background = '#4CAF50'; borderColor = '#388E3C'; glyphText = orden !== null && orden !== undefined ? String(orden) : "✓"; break; // Green
-            case EstadoEnvioEnum.Values.no_entregado: background = '#F44336'; borderColor = '#D32F2F'; glyphText = orden !== null && orden !== undefined ? String(orden) : "X"; break; // Red
-            case EstadoEnvioEnum.Values.cancelado: background = '#757575'; borderColor = '#505050'; glyphText = orden !== null && orden !== undefined ? String(orden) : "-"; break; // Dark Grey
+            case EstadoEnvioEnum.Values.entregado: background = '#4CAF50'; borderColor = '#388E3C'; glyphText = "✓"; break; // Green
+            case EstadoEnvioEnum.Values.no_entregado: background = '#F44336'; borderColor = '#D32F2F'; glyphText = "X"; break; // Red
+            case EstadoEnvioEnum.Values.cancelado: background = '#757575'; borderColor = '#505050'; glyphText = "-"; break; // Dark Grey
             default: // Keep default grey
         }
     }
@@ -96,7 +99,7 @@ export function MapaEnviosView({ envios, isFilteredByReparto, selectedEnvioIdFor
     try {
       const lib = await googleApi.maps.importLibrary("marker") as google.maps.MarkerLibrary;
       setMarkerLibrary(lib);
-      const geometryLib = await googleApi.maps.importLibrary("geometry"); // Ensure geometry is loaded
+      await googleApi.maps.importLibrary("geometry"); // Ensure geometry is loaded
 
       const newMap = new googleApi.maps.Map(mapRef.current, {
         center: MAR_DEL_PLATA_CENTER, zoom: INITIAL_ZOOM, mapTypeControl: false, streetViewControl: false,
@@ -121,7 +124,7 @@ export function MapaEnviosView({ envios, isFilteredByReparto, selectedEnvioIdFor
     }
     
     setIsLoadingApi(true);
-    getGoogleMapsApi() // This should load all necessary libraries including 'geometry'
+    getGoogleMapsApi() 
       .then((api) => {
         setGoogleApi(api);
         setErrorLoadingApi(null);
@@ -149,17 +152,23 @@ export function MapaEnviosView({ envios, isFilteredByReparto, selectedEnvioIdFor
 
     const pinElementConfig = getPinConfig(envio.status, envio.tipo_parada, true, PinElement, envio.orden);
     const headerColor = pinElementConfig.background || '#000';
+    let title = "Detalle de Parada";
+    if(envio.tipo_parada === tipoParadaEnum.Values.retiro_empresa) title = "Punto de Retiro (Empresa)";
+    else if (envio.tipo_parada === tipoParadaEnum.Values.retiro_individual_origen) title = "Retiro de Envío";
+    else if (envio.tipo_parada === tipoParadaEnum.Values.entrega_cliente) title = "Entrega a Cliente";
+
 
     const content = `
         <div style="font-family: Inter, sans-serif; font-size: 13px; padding: 5px; max-width: 240px; line-height: 1.5;">
         <h4 style="margin:0 0 6px 0; font-weight: 600; font-size: 1.1em; color: ${headerColor}; border-bottom: 1px solid #eee; padding-bottom: 4px;">
-            ${envio.tipo_parada === tipoParadaEnum.Values.retiro_empresa ? 'Retiro Empresa' : (envio.tipo_parada === tipoParadaEnum.Values.retiro_individual_origen ? 'Retiro Envío' : 'Entrega Cliente')}
+            ${title}
         </h4>
         <p style="margin:2px 0;"><strong>${envio.nombre_cliente || 'N/A'}</strong></p>
         <p style="margin:2px 0; font-size: 0.9em; color: #555;">${envio.client_location}</p>
         ${envio.tipo_parada !== tipoParadaEnum.Values.retiro_empresa ? `<p style="margin:2px 0; font-size: 0.9em; color: #555;">Paq: ${envio.tipo_paquete_nombre || '-'} (${envio.package_weight != null ? envio.package_weight + 'kg' : '-'})</p>` : ''}
         ${envio.status ? `<p style="margin:2px 0; font-size: 0.9em; color: #555;">Estado: <span style="text-transform: capitalize; font-weight: 500; color: ${headerColor};">${envio.status.replace(/_/g, ' ')}</span></p>`: ''}
         ${(envio.orden !== null && envio.orden !== undefined && (envio.tipo_parada !== tipoParadaEnum.Values.retiro_empresa || envio.orden > 0) ) ? `<p style="margin:2px 0; font-size: 0.9em; color: #555;">Orden Visita: ${envio.orden}</p>` : ''}
+        ${envio.envio_id_original ? `<p style="margin:2px 0; font-size: 0.8em; color: #777;">Envío ID: ${envio.envio_id_original.substring(0,8)}...</p>` : ''}
         </div>`;
     infoWindow.setContent(content);
     infoWindow.open({map: map!, anchor: marker});
@@ -174,7 +183,7 @@ export function MapaEnviosView({ envios, isFilteredByReparto, selectedEnvioIdFor
         if (selectedMarker && selectedEnvioData) {
             openInfoWindow(selectedMarker, selectedEnvioData);
         } else if (infoWindow?.getMap()) {
-            infoWindow.close();
+            // infoWindow.close(); // Don't close if marker not found, might be open for another
         }
     }
   }, [selectedEnvioIdForPopup, markersMap, envios, openInfoWindow, googleApi, markerLibrary, infoWindow]);
@@ -205,7 +214,9 @@ export function MapaEnviosView({ envios, isFilteredByReparto, selectedEnvioIdFor
     sortedEnviosForPath.forEach((envio) => {
       const position = { lat: envio.latitud!, lng: envio.longitud! };
       bounds.extend(position);
-      pathCoordinates.push(position); // Add all valid points for polyline if filtered by reparto
+      if (isFilteredByReparto) { // Only add to polyline if we are showing a specific reparto's route
+        pathCoordinates.push(position); 
+      }
 
       const isSelected = envio.id === selectedEnvioIdForPopup;
       const pinElementConfig = getPinConfig(envio.status, envio.tipo_parada, isSelected, PinElement, envio.orden);
@@ -229,11 +240,11 @@ export function MapaEnviosView({ envios, isFilteredByReparto, selectedEnvioIdFor
       const newPoly = new googleApi.maps.Polyline({
         path: pathCoordinates,
         geodesic: true,
-        strokeColor: '#007BFF', 
+        strokeColor: '#007BFF', // Primary blue, or use theme variable if possible
         strokeOpacity: 0.8,
         strokeWeight: 4,
         icons: [{
-            icon: { path: googleApi.maps.SymbolPath.FORWARD_CLOSED_ARROW, scale: 2.5, strokeColor: '#FFFFFF', strokeWeight: 0.5 },
+            icon: { path: googleApi.maps.SymbolPath.FORWARD_CLOSED_ARROW, scale: 3, strokeColor: '#FFFFFF', strokeWeight: 0.8, fillOpacity: 1, fillColor: '#007BFF' },
             offset: '100%',
             repeat: '80px' 
         }]
@@ -241,8 +252,7 @@ export function MapaEnviosView({ envios, isFilteredByReparto, selectedEnvioIdFor
       newPoly.setMap(map);
       setCurrentPolyline(newPoly);
       
-      // Calculate distance
-      if (googleApi.maps.geometry && googleApi.maps.geometry.spherical) {
+      if (googleApi.maps.geometry && googleApi.maps.geometry.spherical && pathCoordinates.length > 1) {
         let currentTotalDistance = 0;
         for (let i = 0; i < pathCoordinates.length - 1; i++) {
           const from = new googleApi.maps.LatLng(pathCoordinates[i]);
@@ -264,9 +274,9 @@ export function MapaEnviosView({ envios, isFilteredByReparto, selectedEnvioIdFor
         map.setCenter(bounds.getCenter());
         map.setZoom(15);
       } else {
-        map.fitBounds(bounds);
+        map.fitBounds(bounds, 50); // Add some padding
         const listener = googleApi.maps.event.addListenerOnce(map, "idle", function() { 
-          if (map.getZoom()! > 17) map.setZoom(17); // Slightly more zoom for multiple points
+          if (map.getZoom()! > 16) map.setZoom(16); // Don't zoom in too extremely
           googleApi.maps.event.removeListener(listener);
         });
       }
@@ -275,7 +285,7 @@ export function MapaEnviosView({ envios, isFilteredByReparto, selectedEnvioIdFor
       map.setZoom(INITIAL_ZOOM);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, infoWindow, envios, isFilteredByReparto, googleApi, markerLibrary, errorLoadingApi, openInfoWindow, onDistanceCalculated]);
+  }, [map, infoWindow, envios, isFilteredByReparto, googleApi, markerLibrary, errorLoadingApi, openInfoWindow, onDistanceCalculated, selectedEnvioIdForPopup]);
 
 
   if (isLoadingApi) {
@@ -304,7 +314,7 @@ export function MapaEnviosView({ envios, isFilteredByReparto, selectedEnvioIdFor
             <MapPin className="h-12 w-12 text-muted-foreground mb-3" />
             <h3 className="text-lg font-semibold text-muted-foreground mb-1">Sin Envíos para Mostrar</h3>
             <p className="text-muted-foreground text-sm max-w-md">
-                {isFilteredByReparto ? "Este reparto no tiene envíos geolocalizados." : "No hay envíos geolocalizados con los filtros actuales."}
+                {isFilteredByReparto ? "Este reparto no tiene paradas geolocalizadas." : "No hay envíos geolocalizados con los filtros actuales."}
             </p>
         </div>
     )
@@ -313,5 +323,3 @@ export function MapaEnviosView({ envios, isFilteredByReparto, selectedEnvioIdFor
   return <div ref={mapRef} className={cn("w-full h-full rounded-lg shadow-sm border border-border/20", (isLoadingApi || errorLoadingApi) ? "bg-muted/30" : "")} />;
 }
 
-
-    
