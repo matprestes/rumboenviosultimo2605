@@ -2,12 +2,10 @@
 // src/components/repartopruebas/MapaEnviosSummary.tsx
 "use client";
 
-import type { EnvioMapa, RepartoParaFiltro } from "@/types/supabase";
+import type { EnvioMapa, RepartoParaFiltro } from "@/app/repartoprueba/actions"; // Adjusted import path
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Layers, PackageSearch, Truck, Building, Route, MapPin, Info } from "lucide-react";
-
-// Assuming tipoParadaEnum is defined in schemas or types
-import { tipoParadaEnum } from "@/lib/schemas"; 
+import { tipoParadaEnum } from "@/lib/schemas"; // Import from schemas.ts
 
 interface MapaEnviosSummaryProps {
   displayedEnvios: EnvioMapa[];
@@ -32,7 +30,6 @@ export function MapaEnviosSummary({
 
   const selectedReparto = getSelectedRepartoDetails();
   
-  // Count only actual delivery stops for the summary if a reparto is selected
   const totalParadasEntrega = displayedEnvios.filter(
     (envio) => envio.tipo_parada === tipoParadaEnum.Values.entrega_cliente
   ).length;
@@ -109,4 +106,3 @@ export function MapaEnviosSummary({
     </Card>
   );
 }
-

@@ -2,8 +2,8 @@
 // src/components/repartopruebas/RepartoMapFilter.tsx
 "use client";
 
-import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import type { RepartoParaFiltro } from "@/types/supabase";
+import { useRouter, usePathname } from "next/navigation"; // Removed useSearchParams as it's not directly used here for reading
+import type { RepartoParaFiltro } from "@/app/repartoprueba/actions"; // Adjusted import path
 import {
   Select,
   SelectContent,
@@ -12,7 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Route, PackageSearch, ListFilter } from "lucide-react";
+import { Route, PackageSearch, ListFilter, Building } from "lucide-react"; // Added Building
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 
 interface RepartoMapFilterProps {
@@ -22,15 +22,13 @@ interface RepartoMapFilterProps {
 
 export function RepartoMapFilter({ repartos, currentRepartoId }: RepartoMapFilterProps) {
   const router = useRouter();
-  const pathname = usePathname(); // Use pathname for navigation
+  const pathname = usePathname(); 
 
   const handleFilterChange = (repartoId: string) => {
-    const params = new URLSearchParams(); // Start with fresh params for this specific filter
+    const params = new URLSearchParams(); 
     if (repartoId && repartoId !== "all") {
       params.set("repartoId", repartoId);
     }
-    // Remove page param if it exists, as this filter might change the number of items
-    // params.delete("page"); 
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
   };
 

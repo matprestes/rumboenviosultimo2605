@@ -3,7 +3,8 @@
 "use client";
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import type { EnvioMapa, TipoParada } from "@/types/supabase";
+import type { EnvioMapa } from "@/app/repartoprueba/actions"; // Adjusted import path
+import { estadoEnvioEnum, tipoParadaEnum, type TipoParada } from "@/lib/schemas"; // Import from schemas.ts
 import { Loader2, AlertTriangle, Info as InfoIcon, MapPin } from "lucide-react";
 import { getGoogleMapsApi } from '@/services/google-maps-service';
 import { cn } from '@/lib/utils';
@@ -11,7 +12,7 @@ import { cn } from '@/lib/utils';
 interface MapaEnviosViewProps {
   envios: EnvioMapa[];
   isFilteredByReparto: boolean; 
-  selectedEnvioIdForPopup?: string | null; // To trigger InfoWindow externally
+  selectedEnvioIdForPopup?: string | null; 
 }
 
 const MAR_DEL_PLATA_CENTER = { lat: -38.0055, lng: -57.5426 };
@@ -30,24 +31,24 @@ function getEnvioMarkerIcon(
     let zIndex = isSelected ? 100 : 1;
     let path = google.maps.SymbolPath.CIRCLE;
 
-    if (tipoParada === 'retiro_empresa') {
+    if (tipoParada === tipoParadaEnum.Values.retiro_empresa) {
         color = '#1E90FF'; // DodgerBlue for company pickup
-        path = google.maps.SymbolPath.FORWARD_CLOSED_ARROW; // Or a building icon if available
+        path = google.maps.SymbolPath.FORWARD_CLOSED_ARROW; 
         scale = isSelected ? 10 : 8;
         zIndex = isSelected ? 101 : 10;
-    } else if (tipoParada === 'retiro_individual_origen') {
+    } else if (tipoParada === tipoParadaEnum.Values.retiro_individual_origen) {
         color = '#32CD32'; // LimeGreen for individual pickup
         path = google.maps.SymbolPath.BACKWARD_CLOSED_ARROW;
         scale = isSelected ? 9 : 7;
         zIndex = isSelected ? 100 : 2;
     } else { // entrega_cliente or otro
         switch (status) {
-            case 'pendiente_asignacion': color = '#FF8C00'; break; // DarkOrange
-            case 'asignado': color = '#4169E1'; break; // RoyalBlue
-            case 'en_camino': color = '#FFD700'; break; // Gold
-            case 'entregado': color = '#32CD32'; break; // LimeGreen
-            case 'no_entregado': color = '#DC143C'; break; // Crimson
-            case 'cancelado': color = '#A9A9A9'; break; // DarkGray
+            case estadoEnvioEnum.Values.pendiente_asignacion: color = '#FF8C00'; break; 
+            case estadoEnvioEnum.Values.asignado: color = '#4169E1'; break; 
+            case estadoEnvioEnum.Values.en_camino: color = '#FFD700'; break; 
+            case estadoEnvioEnum.Values.entregado: color = '#32CD32'; break; 
+            case estadoEnvioEnum.Values.no_entregado: color = '#DC143C'; break; 
+            case estadoEnvioEnum.Values.cancelado: color = '#A9A9A9'; break; 
             default: color = '#757575';
         }
     }
@@ -59,8 +60,8 @@ function getEnvioMarkerIcon(
         strokeColor: '#FFFFFF',
         strokeWeight: 1.5,
         scale: scale,
-        anchor: new google.maps.Point(0,0), // Adjust if needed based on path
-        labelOrigin: new google.maps.Point(0, - (scale + 2)) // Position label above
+        anchor: new google.maps.Point(0,0), 
+        labelOrigin: new google.maps.Point(0, - (scale + 2)) 
     };
 }
 
@@ -75,31 +76,27 @@ export function MapaEnviosView({ envios, isFilteredByReparto, selectedEnvioIdFor
   const [googleApi, setGoogleApi] = useState<typeof google | null>(null);
   const [isLoadingApi, setIsLoadingApi] = useState<boolean>(true);
   const [errorLoadingApi, setErrorLoadingApi] = useState<string | null>(null);
+  const [isOnline, setIsOnline] = useState(true);
 
   useEffect(() => {
-    getGoogleMapsApi()
-      .then((api) => {
-        setGoogleApi(api);
-        setErrorLoadingApi(null);
-      })
-      .catch((err: Error) => {
-        console.error("MapaEnviosView: Failed to load Google Maps API.", err);
-        setErrorLoadingApi(err.message || "Error al cargar el servicio de mapas.");
-      })
-      .finally(() => {
-        setIsLoadingApi(false);
-      });
+    if (typeof window !== 'undefined') {
+      setIsOnline(navigator.onLine);
+      const handleOnline = () => setIsOnline(true);
+      const handleOffline = () => setIsOnline(false);
+      window.addEventListener('online', handleOnline);
+      window.addEventListener('offline', handleOffline);
+      return () => {
+        window.removeEventListener('online', handleOnline);
+        window.removeEventListener('offline', handleOffline);
+      };
+    }
   }, []);
 
   const initMap = useCallback(() => {
     if (!googleApi || !mapRef.current || map) return;
     try {
       const newMap = new googleApi.maps.Map(mapRef.current, {
-        center: MAR_DEL_PLATA_CENTER,
-        zoom: INITIAL_ZOOM,
-        mapId: `RUMBOS_MAPA_PRUEBA_${Math.random().toString(36).substring(7)}`, // Unique ID
-        mapTypeControl: false,
-        streetViewControl: false,
+        center: MAR_DEL_PLATA_CENTER, zoom: INITIAL_ZOOM, mapTypeControl: false, streetViewControl: false,
         fullscreenControl: true,
         zoomControl: true,
       });
@@ -111,11 +108,35 @@ export function MapaEnviosView({ envios, isFilteredByReparto, selectedEnvioIdFor
     }
   }, [googleApi, map]);
 
+
+  useEffect(() => {
+    if (!isOnline) {
+      setErrorLoadingApi("No hay conexión a internet para cargar el mapa.");
+      setIsLoadingApi(false);
+      return;
+    }
+    
+    setIsLoadingApi(true);
+    getGoogleMapsApi()
+      .then((api) => {
+        setGoogleApi(api);
+        setErrorLoadingApi(null);
+      })
+      .catch((err: Error) => {
+        console.error("MapaEnviosView: Failed to load Google Maps API.", err);
+        setErrorLoadingApi(err.message || "Error al cargar el servicio de mapas. Verifique la API Key y la conexión.");
+      })
+      .finally(() => {
+        setIsLoadingApi(false);
+      });
+  }, [isOnline]); 
+
   useEffect(() => {
     if (googleApi && !map && mapRef.current) {
-      initMap();
+        initMap();
     }
   }, [googleApi, map, initMap]);
+
 
   const openInfoWindowForSelectedEnvio = useCallback(() => {
     if (!map || !infoWindow || !selectedEnvioIdForPopup || !googleApi) return;
@@ -124,16 +145,19 @@ export function MapaEnviosView({ envios, isFilteredByReparto, selectedEnvioIdFor
     const selectedEnvioData = envios.find(e => e.id === selectedEnvioIdForPopup);
 
     if (selectedMarker && selectedEnvioData) {
+        const markerIconDetails = getEnvioMarkerIcon(selectedEnvioData.status, selectedEnvioData.tipo_parada, true, googleApi);
+        const headerColor = typeof markerIconDetails === 'object' && markerIconDetails !== null && 'fillColor' in markerIconDetails ? markerIconDetails.fillColor : '#000';
+
         const content = `
             <div style="font-family: sans-serif; font-size: 13px; padding: 3px; max-width: 230px; line-height: 1.4;">
-            <h4 style="margin:0 0 4px 0; font-weight: 600; color: ${getEnvioMarkerIcon(selectedEnvioData.status, selectedEnvioData.tipo_parada, true, googleApi)?.fillColor || '#000'};">
-                ${selectedEnvioData.tipo_parada === 'retiro_empresa' ? 'Retiro Empresa' : (selectedEnvioData.tipo_parada === 'retiro_individual_origen' ? 'Retiro Envío' : 'Entrega Cliente')}
+            <h4 style="margin:0 0 4px 0; font-weight: 600; color: ${headerColor};">
+                ${selectedEnvioData.tipo_parada === tipoParadaEnum.Values.retiro_empresa ? 'Retiro Empresa' : (selectedEnvioData.tipo_parada === tipoParadaEnum.Values.retiro_individual_origen ? 'Retiro Envío' : 'Entrega Cliente')}
             </h4>
             <p style="margin:1px 0;"><strong>${selectedEnvioData.nombre_cliente || 'N/A'}</strong></p>
             <p style="margin:1px 0; font-size: 0.9em;">${selectedEnvioData.client_location}</p>
-            ${selectedEnvioData.tipo_parada !== 'retiro_empresa' ? `<p style="margin:1px 0; font-size: 0.9em;">Paq: ${selectedEnvioData.tipo_paquete_nombre || '-'} (${selectedEnvioData.package_weight != null ? selectedEnvioData.package_weight + 'kg' : '-'})</p>` : ''}
+            ${selectedEnvioData.tipo_parada !== tipoParadaEnum.Values.retiro_empresa ? `<p style="margin:1px 0; font-size: 0.9em;">Paq: ${selectedEnvioData.tipo_paquete_nombre || '-'} (${selectedEnvioData.package_weight != null ? selectedEnvioData.package_weight + 'kg' : '-'})</p>` : ''}
             ${selectedEnvioData.status ? `<p style="margin:1px 0; font-size: 0.9em;">Estado: <span style="text-transform: capitalize;">${selectedEnvioData.status.replace(/_/g, ' ')}</span></p>`: ''}
-            ${selectedEnvioData.orden !== null && selectedEnvioData.tipo_parada !== 'retiro_empresa' ? `<p style="margin:1px 0; font-size: 0.9em;">Orden: ${selectedEnvioData.orden}</p>` : ''}
+            ${selectedEnvioData.orden !== null && selectedEnvioData.tipo_parada !== tipoParadaEnum.Values.retiro_empresa ? `<p style="margin:1px 0; font-size: 0.9em;">Orden: ${selectedEnvioData.orden}</p>` : ''}
             </div>`;
         infoWindow.setContent(content);
         infoWindow.open(map, selectedMarker);
@@ -149,10 +173,9 @@ export function MapaEnviosView({ envios, isFilteredByReparto, selectedEnvioIdFor
 
 
   useEffect(() => {
-    if (!map || !infoWindow || !googleApi) return;
+    if (!map || !infoWindow || !googleApi || !googleApi.maps) return;
 
-    // Clear existing markers from map and state
-    markers.forEach(marker => marker.setMap(null));
+    markers.forEach(marker => marker.setMap(null)); 
     const newMarkersMap = new Map<string, google.maps.Marker>();
     
     if (currentPolyline) currentPolyline.setMap(null);
@@ -162,14 +185,13 @@ export function MapaEnviosView({ envios, isFilteredByReparto, selectedEnvioIdFor
     const pathCoordinates: google.maps.LatLngLiteral[] = [];
 
     if (isFilteredByReparto) {
-        // Sort by 'orden' only if it's a filtered reparto view
         validEnviosForMap.sort((a, b) => (a.orden ?? Infinity) - (b.orden ?? Infinity));
     }
 
-    validEnviosForMap.forEach((envio, index) => {
+    validEnviosForMap.forEach((envio) => {
       const position = { lat: envio.latitud!, lng: envio.longitud! };
       bounds.extend(position);
-      if(isFilteredByReparto || envio.tipo_parada === 'retiro_empresa') { // Only add to polyline if part of a specific reparto
+      if(isFilteredByReparto || envio.tipo_parada === tipoParadaEnum.Values.retiro_empresa) { 
          pathCoordinates.push(position);
       }
 
@@ -177,7 +199,7 @@ export function MapaEnviosView({ envios, isFilteredByReparto, selectedEnvioIdFor
       const markerIcon = getEnvioMarkerIcon(envio.status, envio.tipo_parada, isSelected, googleApi);
       
       let labelText = "";
-      if(envio.tipo_parada === 'retiro_empresa') labelText = "R";
+      if(envio.tipo_parada === tipoParadaEnum.Values.retiro_empresa) labelText = "R"; // Or "P" for Pickup
       else if (envio.orden !== null && envio.orden !== undefined) labelText = String(envio.orden);
 
 
@@ -192,28 +214,26 @@ export function MapaEnviosView({ envios, isFilteredByReparto, selectedEnvioIdFor
             fontWeight: 'bold',
         },
         title: `${envio.nombre_cliente || 'Punto'} - ${envio.client_location}`,
-        zIndex: isSelected ? 1000 : (envio.tipo_parada === 'retiro_empresa' ? 500 : undefined)
+        zIndex: isSelected ? 1000 : (envio.tipo_parada === tipoParadaEnum.Values.retiro_empresa ? 500 : undefined)
       });
 
       marker.addListener('click', () => {
-        // Logic to open info window is now handled by selectedEnvioIdForPopup effect
-        // For direct clicks, you might want to call a prop function to update selectedEnvioIdForPopup
-        // This part would need wiring up if direct map clicks should also select & open info window
-        // e.g. onEnvioMarkerClick(envio.id)
-        const tempInfoWindow = new googleApi.maps.InfoWindow();
+        const markerIconDetails = getEnvioMarkerIcon(envio.status, envio.tipo_parada, true, googleApi);
+        const headerColor = typeof markerIconDetails === 'object' && markerIconDetails !== null && 'fillColor' in markerIconDetails ? markerIconDetails.fillColor : '#000';
+
         const content = `
             <div style="font-family: sans-serif; font-size: 13px; padding: 3px; max-width: 230px; line-height: 1.4;">
-            <h4 style="margin:0 0 4px 0; font-weight: 600; color: ${getEnvioMarkerIcon(envio.status, envio.tipo_parada, true, googleApi)?.fillColor || '#000'};">
-                ${envio.tipo_parada === 'retiro_empresa' ? 'Retiro Empresa' : (envio.tipo_parada === 'retiro_individual_origen' ? 'Retiro Envío' : 'Entrega Cliente')}
+            <h4 style="margin:0 0 4px 0; font-weight: 600; color: ${headerColor};">
+                ${envio.tipo_parada === tipoParadaEnum.Values.retiro_empresa ? 'Retiro Empresa' : (envio.tipo_parada === tipoParadaEnum.Values.retiro_individual_origen ? 'Retiro Envío' : 'Entrega Cliente')}
             </h4>
             <p style="margin:1px 0;"><strong>${envio.nombre_cliente || 'N/A'}</strong></p>
             <p style="margin:1px 0; font-size: 0.9em;">${envio.client_location}</p>
-            ${envio.tipo_parada !== 'retiro_empresa' ? `<p style="margin:1px 0; font-size: 0.9em;">Paq: ${envio.tipo_paquete_nombre || '-'} (${envio.package_weight != null ? envio.package_weight + 'kg' : '-'})</p>` : ''}
+            ${envio.tipo_parada !== tipoParadaEnum.Values.retiro_empresa ? `<p style="margin:1px 0; font-size: 0.9em;">Paq: ${envio.tipo_paquete_nombre || '-'} (${envio.package_weight != null ? envio.package_weight + 'kg' : '-'})</p>` : ''}
             ${envio.status ? `<p style="margin:1px 0; font-size: 0.9em;">Estado: <span style="text-transform: capitalize;">${envio.status.replace(/_/g, ' ')}</span></p>`: ''}
-            ${envio.orden !== null && envio.tipo_parada !== 'retiro_empresa' ? `<p style="margin:1px 0; font-size: 0.9em;">Orden: ${envio.orden}</p>` : ''}
+            ${envio.orden !== null && envio.tipo_parada !== tipoParadaEnum.Values.retiro_empresa ? `<p style="margin:1px 0; font-size: 0.9em;">Orden: ${envio.orden}</p>` : ''}
             </div>`;
-        tempInfoWindow.setContent(content);
-        tempInfoWindow.open(map, marker);
+        infoWindow.setContent(content);
+        infoWindow.open(map, marker);
 
       });
       newMarkersMap.set(envio.id, marker);
@@ -224,13 +244,13 @@ export function MapaEnviosView({ envios, isFilteredByReparto, selectedEnvioIdFor
       const newPoly = new googleApi.maps.Polyline({
         path: pathCoordinates,
         geodesic: true,
-        strokeColor: '#007BFF', // Blue
+        strokeColor: '#007BFF', 
         strokeOpacity: 0.8,
         strokeWeight: 3,
         icons: [{
             icon: { path: googleApi.maps.SymbolPath.FORWARD_CLOSED_ARROW, scale: 2.5, strokeColor: '#007BFF' },
             offset: '100%',
-            repeat: '70px'
+            repeat: '70px' 
         }]
       });
       newPoly.setMap(map);
@@ -243,8 +263,12 @@ export function MapaEnviosView({ envios, isFilteredByReparto, selectedEnvioIdFor
         map.setZoom(15);
       } else {
         map.fitBounds(bounds);
+        const listener = googleApi.maps.event.addListenerOnce(map, "idle", function() { 
+          if (map.getZoom()! > 16) map.setZoom(16);
+          googleApi.maps.event.removeListener(listener);
+        });
       }
-    } else if (validEnviosForMap.length === 0) {
+    } else if (validEnviosForMap.length === 0 && map) {
       map.setCenter(MAR_DEL_PLATA_CENTER);
       map.setZoom(INITIAL_ZOOM);
     }
@@ -266,6 +290,7 @@ export function MapaEnviosView({ envios, isFilteredByReparto, selectedEnvioIdFor
         <AlertTriangle className="h-12 w-12 text-destructive mb-3" />
         <h3 className="text-lg font-semibold text-destructive mb-1">Error al Cargar el Mapa</h3>
         <p className="text-destructive/80 text-sm max-w-md">{errorLoadingApi}</p>
+         {!process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY && <p className="text-sm mt-2 text-muted-foreground">Asegúrate de que la variable de entorno NEXT_PUBLIC_GOOGLE_MAPS_API_KEY esté configurada.</p>}
       </div>
     );
   }

@@ -29,6 +29,16 @@ export const EstadoRepartoEnum = z.enum([
 });
 export type EstadoReparto = z.infer<typeof EstadoRepartoEnum>;
 
+// Enum for tipo_parada, previously in src/types/supabase.ts
+export const tipoParadaEnum = z.enum([
+  "retiro_empresa",
+  "entrega_cliente",
+  "retiro_individual_origen",
+  "otro",
+]);
+export type TipoParada = z.infer<typeof tipoParadaEnum>;
+
+
 // --- Empresa Schemas ---
 export const EmpresaSchema = z.object({
   id: z.string().uuid().optional(),
@@ -302,36 +312,34 @@ export const RepartoSchema = z.object({
 export type Reparto = z.infer<typeof RepartoSchema>;
 export type RepartoFormValues = Omit<Reparto, 'id' | 'created_at' | 'updated_at' | 'user_id' | 'estado'>;
 
-export interface RepartoConDetalles extends Reparto {
-  repartidores?: Pick<Repartidor, 'id' | 'nombre'> | null;
-  empresas?: Pick<Empresa, 'id' | 'nombre' | 'latitud' | 'longitud' | 'direccion'> | null;
-  paradas_count?: number;
-  paradas_reparto?: ParadaConDetalles[]; // Esta es la clave para la relación con ParadaConDetalles
-}
-
 // --- ParadaReparto Schemas ---
 export const ParadaRepartoSchema = z.object({
   id: z.string().uuid().optional(),
   reparto_id: z.string().uuid(),
   envio_id: z.string().uuid().nullable().optional(),
-  descripcion_parada: z.string().nullable().optional().default(""),
+  descripcion_parada: z.string().nullable().optional().default(null), // Allow null
   orden_visita: z.number().int().min(0, "El orden de visita no puede ser negativo.").nullable().optional(),
   estado_parada: EstadoEnvioEnum.default('asignado'),
   hora_estimada_llegada: z.string().regex(timeRegex, "Formato HH:MM inválido.").nullable().optional().default(null).or(z.literal("")),
   hora_real_llegada: z.string().regex(timeRegex, "Formato HH:MM inválido.").nullable().optional().default(null).or(z.literal("")),
-  notas_parada: z.string().nullable().optional().default(""),
+  notas_parada: z.string().nullable().optional().default(null), // Allow null
   created_at: z.string().datetime().optional(),
   updated_at: z.string().datetime().optional(),
   user_id: z.string().uuid().nullable().optional(),
 });
 export type ParadaReparto = z.infer<typeof ParadaRepartoSchema>;
 
-// ParadaConDetalles ahora anida EnvioConDetalles
 export interface ParadaConDetalles extends ParadaReparto {
-  envios?: EnvioConDetalles | null; // El envío asociado a esta parada
-  repartos?: RepartoConDetalles | null; // El reparto al que pertenece esta parada
+  envios?: EnvioConDetalles | null;
+  repartos?: RepartoConDetalles | null; 
 }
 
+export interface RepartoConDetalles extends Reparto {
+  repartidores?: Pick<Repartidor, 'id' | 'nombre'> | null;
+  empresas?: Pick<Empresa, 'id' | 'nombre' | 'latitud' | 'longitud' | 'direccion'> | null;
+  paradas_count?: number;
+  paradas_reparto?: ParadaConDetalles[];
+}
 
 // --- Reparto Lote Schemas ---
 export const RepartoLoteClientAssignmentSchema = z.object({
@@ -386,11 +394,11 @@ export type ShipmentRequestFormValues = z.infer<typeof ShipmentRequestFormSchema
 
 
 // --- Types for MapaEnviosPage ---
-export type UnassignedEnvioListItem = Pick<Envio, 'id' | 'direccion_origen' | 'latitud_origen' | 'longitud_origen' | 'direccion_destino' | 'latitud_destino' | 'longitud_destino' | 'estado' | 'cliente_temporal_nombre'> & {
+export interface UnassignedEnvioListItem extends Pick<Envio, 'id' | 'direccion_origen' | 'latitud_origen' | 'longitud_origen' | 'direccion_destino' | 'latitud_destino' | 'longitud_destino' | 'estado' | 'cliente_temporal_nombre'> {
   clientes?: Pick<Cliente, 'nombre' | 'apellido'> | null;
 };
 
-export type ActiveRepartoListItem = Pick<Reparto, 'id' | 'fecha_reparto' | 'estado' | 'empresa_asociada_id'> & {
+export interface ActiveRepartoListItem extends Pick<Reparto, 'id' | 'fecha_reparto' | 'estado' | 'empresa_asociada_id'> {
   repartidores?: Pick<Repartidor, 'nombre'> | null;
   empresas?: Pick<Empresa, 'nombre' | 'latitud' | 'longitud'> | null;
   paradas: Array<Pick<ParadaReparto, 'orden_visita'> & {
@@ -401,11 +409,9 @@ export type ActiveRepartoListItem = Pick<Reparto, 'id' | 'fecha_reparto' | 'esta
 // --- Type for Route Optimization ---
 export interface MappableStop {
   id: string; // Unique ID for this point (e.g., parada.id + '_pickup' or parada.id + '_delivery' or 'ORIGIN_EMPRESA_ANCHOR')
-  originalParadaId?: string | null; // The ID of the ParadaReparto table entry, if applicable
+  originalParadaId: string; // The ID of the ParadaReparto table entry, or special value
   envioId?: string | null; // The ID of the Envio if this point relates to one
-  type: 'pickup_empresa' | 'pickup_envio' | 'delivery_envio';
+  type: TipoParada; // 'pickup_empresa' | 'pickup_envio' | 'delivery_envio'
   location: { lat: number; lng: number };
-  displayName: string; // For map markers/tooltips
+  displayName: string; // For map markers/tooltips e.g., "Retiro E1: Cliente X" or "Entrega E1: Cliente Y"
 }
-
-    
