@@ -1,4 +1,3 @@
-
 // src/components/repartopruebas/MapaEnviosSummary.tsx
 "use client";
 
@@ -14,8 +13,9 @@ import { es } from 'date-fns/locale';
 interface MapaEnviosSummaryProps {
   displayedEnvios: EnvioMapa[];
   unassignedEnviosCount: number;
-  selectedRepartoDetails?: RepartoParaFiltro | null; // Updated to allow null for general view
-  calculatedDistanceKm?: number | null; 
+  selectedRepartoDetails?: RepartoParaFiltro | null;
+  calculatedDistanceKm?: number | null;
+  selectedRepartoId?: string | null; // Added this prop
 }
 
 function getEstadoRepartoBadgeClass(estado: string | null | undefined): string {
@@ -39,6 +39,7 @@ export function MapaEnviosSummary({
   unassignedEnviosCount,
   selectedRepartoDetails,
   calculatedDistanceKm,
+  selectedRepartoId, // Destructure the new prop
 }: MapaEnviosSummaryProps) {
 
   const totalParadasEnMapa = displayedEnvios.length;
@@ -59,11 +60,11 @@ export function MapaEnviosSummary({
     tituloPrincipal = "Resumen del Reparto";
     IconoPrincipal = selectedRepartoDetails.tipo_reparto === 'individual' ? Route : Building;
     subtitulo = selectedRepartoDetails.label || "Detalles del reparto";
-  } else if (selectedRepartoDetails === null && unassignedEnviosCount > 0 && totalParadasEnMapa === unassignedEnviosCount) { // Specifically "Unassigned" filter
+  } else if (selectedRepartoId === "unassigned") { 
     tituloPrincipal = "Envíos No Asignados";
     IconoPrincipal = PackageSearch;
     subtitulo = `Total: ${unassignedEnviosCount} envíos pendientes de asignación.`;
-  } else if (selectedRepartoDetails === null) { // "All assigned" filter or no filter
+  } else if (selectedRepartoId === "all" || !selectedRepartoId) {
      subtitulo = `Mostrando ${totalParadasEnMapa} paradas en el mapa.`;
   }
 
@@ -115,20 +116,20 @@ export function MapaEnviosSummary({
             <span className="text-xs">Paradas de Entrega (Clientes): <span className="font-medium text-foreground">{totalParadasEntrega}</span></span>
         </div>
 
-        {selectedRepartoDetails && calculatedDistanceKm !== null && calculatedDistanceKm !== undefined && (
+        {calculatedDistanceKm !== null && calculatedDistanceKm !== undefined && (
             <div className="flex items-center gap-1.5 text-muted-foreground">
                 <Milestone size={14} className="text-purple-500 flex-shrink-0" />
-                <span className="text-xs">Distancia Estimada Ruta: <span className="font-medium text-foreground">{calculatedDistanceKm.toFixed(2)} km</span></span>
+                <span className="text-xs">Distancia Estimada Ruta: <span className="font-medium text-foreground">{calculatedDistanceKm > 0 ? calculatedDistanceKm.toFixed(2) + ' km' : '-'}</span></span>
             </div>
         )}
-         {selectedRepartoDetails && (
+         {(selectedRepartoDetails || isFilteredByReparto(selectedRepartoId)) && ( // Show Time only if a specific reparto is selected
             <div className="flex items-center gap-1.5 text-muted-foreground">
                 <Info size={14} className="text-gray-500 flex-shrink-0" />
                 <span className="text-xs">Tiempo Estimado Ruta: <span className="font-medium text-foreground">N/A</span></span>
             </div>
         )}
 
-        {(selectedRepartoDetails === null) && unassignedEnviosCount > 0 && (
+        {(selectedRepartoId === "all" || !selectedRepartoId) && unassignedEnviosCount > 0 && (
            <div className="flex items-center gap-1.5 text-muted-foreground pt-1.5 mt-1.5 border-t border-border/30">
             <PackageSearch size={14} className="text-orange-500 flex-shrink-0" />
             <span className="text-xs">Envíos No Asignados (Global): <span className="font-medium text-foreground">{unassignedEnviosCount}</span></span>
@@ -143,4 +144,9 @@ export function MapaEnviosSummary({
       </CardContent>
     </Card>
   );
+}
+
+// Helper function to determine if a specific reparto is being filtered (not "all" or "unassigned")
+function isFilteredByReparto(repartoId: string | null | undefined): boolean {
+    return !!repartoId && repartoId !== "all" && repartoId !== "unassigned";
 }

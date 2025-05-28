@@ -1,4 +1,4 @@
-
+// src/components/repartopruebas/mapa-envios-page-content.tsx
 "use client";
 
 import * as React from 'react';
@@ -24,7 +24,7 @@ export default function MapaEnviosPageContent({
   initialUnassignedEnviosCount
 }: MapaEnviosPageContentProps) {
   
-  const [enviosParaMapa, setEnviosParaMapa] = React.useState<EnvioMapa[]>([]);
+  const [enviosParaMapa, setEnviosParaMapa] = React.useState<EnvioMapa[]>(selectedRepartoId === "unassigned" ? initialUnassignedEnviosData : []);
   const [errorMapa, setErrorMapa] = React.useState<string | null>(null);
   const [isLoadingMapaData, setIsLoadingMapaData] = React.useState(true);
   const [calculatedDistance, setCalculatedDistance] = React.useState<number | null>(null);
@@ -37,6 +37,7 @@ export default function MapaEnviosPageContent({
 
       if (selectedRepartoId === "unassigned") {
         setEnviosParaMapa(initialUnassignedEnviosData);
+        setIsLoadingMapaData(false);
       } else {
         const { data, error } = await getEnviosGeolocalizadosAction(selectedRepartoId); // 'all' or specific ID
         if (error) {
@@ -45,8 +46,8 @@ export default function MapaEnviosPageContent({
         } else {
           setEnviosParaMapa(data || []);
         }
+        setIsLoadingMapaData(false);
       }
-      setIsLoadingMapaData(false);
     }
     fetchMapData();
   }, [selectedRepartoId, initialUnassignedEnviosData]);
@@ -61,7 +62,7 @@ export default function MapaEnviosPageContent({
   }, [selectedRepartoId, repartosParaFiltro]);
 
 
-  if (errorMapa) {
+  if (errorMapa && !isLoadingMapaData) { // Show error only if not loading
     return (
       <div className="flex flex-col items-center justify-center h-[calc(100vh-200px)] border-2 border-dashed border-destructive/30 rounded-2xl bg-card shadow-md p-8 text-center">
         <AlertTriangle className="w-16 h-16 text-destructive mb-4" />
@@ -81,14 +82,13 @@ export default function MapaEnviosPageContent({
         <MapaEnviosSummary
             displayedEnvios={enviosParaMapa || []}
             unassignedEnviosCount={initialUnassignedEnviosCount}
-            selectedRepartoDetails={selectedRepartoDetails} // Pass full details
+            selectedRepartoDetails={selectedRepartoDetails}
             calculatedDistanceKm={calculatedDistance}
+            selectedRepartoId={selectedRepartoId} // Pass selectedRepartoId here
         />
-        {/* Show Unassigned Envios card if "unassigned" or "all" is selected and there are unassigned envios */}
         {(selectedRepartoId === "all" || selectedRepartoId === "unassigned" || !selectedRepartoId) && initialUnassignedEnviosCount > 0 && (
             <EnviosNoAsignadosCard envios={initialUnassignedEnviosData} />
         )}
-        {/* Show it also if filtering by a specific reparto, to allow assignment from this view later (optional) */}
          {isFilteredBySpecificReparto && initialUnassignedEnviosCount > 0 && initialUnassignedEnviosData.length > 0 && (
              <EnviosNoAsignadosCard envios={initialUnassignedEnviosData} />
         )}
@@ -103,7 +103,7 @@ export default function MapaEnviosPageContent({
             <MapaEnviosView
                 envios={enviosParaMapa || []}
                 isFilteredByReparto={isFilteredBySpecificReparto}
-                selectedEnvioIdForPopup={null} // This page doesn't directly select markers for popup yet
+                selectedEnvioIdForPopup={null} 
                 onDistanceCalculated={setCalculatedDistance}
             />
         )}
