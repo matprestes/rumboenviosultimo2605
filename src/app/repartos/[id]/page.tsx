@@ -85,48 +85,44 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
       
       let processedParadas = [...(repartoDataWithDate.paradas_reparto || [])];
       const currentIsLoteReparto = !!repartoDataWithDate.empresa_asociada_id;
-      const currentEmpresaOrigen = repartoDataWithDate.empresas;
-      let companyPickupStop: ParadaConDetalles | undefined = undefined;
+      const currentEmpresaData = repartoDataWithDate.empresas;
+      let companyPickupStopFound = processedParadas.find(p => !p.envio_id && (p.orden_visita === 0 || p.descripcion_parada?.toLowerCase().includes('retiro')));
 
-      // Ensure a "Retiro en empresa" stop exists for lote repartos, potentially virtual
-      if (currentIsLoteReparto && currentEmpresaOrigen?.latitud != null && currentEmpresaOrigen?.longitud != null) {
-        companyPickupStop = processedParadas.find(p => !p.envio_id && p.descripcion_parada?.toLowerCase().includes('retiro'));
-        if (companyPickupStop) {
-          // If it exists, ensure its order is 0
-          companyPickupStop = { ...companyPickupStop, orden_visita: 0 };
-          processedParadas = processedParadas.filter(p => p.id !== companyPickupStop!.id); // Remove and re-add
-          processedParadas.unshift(companyPickupStop);
-        } else {
-          // Create a virtual pickup stop if none explicitly exists in paradas_reparto for a lote
-          companyPickupStop = {
+      if (currentIsLoteReparto && currentEmpresaData?.latitud != null && currentEmpresaData?.longitud != null) {
+        if (!companyPickupStopFound) {
+          const virtualPickupStop: ParadaConDetalles = {
             id: `virtual-pickup-${repartoDataWithDate.id!}`,
             reparto_id: repartoDataWithDate.id!,
             envio_id: null, 
-            descripcion_parada: `Retiro en ${currentEmpresaOrigen.nombre || 'Empresa Asociada'} (${currentEmpresaOrigen.direccion || 'N/A'})`,
-            orden_visita: 0, // Explicitly 0 for origin
-            estado_parada: repartoDataWithDate.estado === 'planificado' ? 'asignado' : 'en_camino',
+            descripcion_parada: `Retiro en ${currentEmpresaData.nombre || 'Empresa Asociada'} (${currentEmpresaData.direccion || 'N/A'})`,
+            orden_visita: 0,
+            estado_parada: 'asignado',
             created_at: repartoDataWithDate.created_at || new Date().toISOString(),
             updated_at: repartoDataWithDate.updated_at || new Date().toISOString(),
             user_id: repartoDataWithDate.user_id || null,
             envios: null, 
           };
-          processedParadas.unshift(companyPickupStop);
+          processedParadas.unshift(virtualPickupStop);
+          companyPickupStopFound = virtualPickupStop;
+        } else {
+          companyPickupStopFound = { ...companyPickupStopFound, orden_visita: 0 };
+          processedParadas = processedParadas.filter(p => p.id !== companyPickupStopFound!.id);
+          processedParadas.unshift(companyPickupStopFound);
         }
       }
       
-      // Renumber delivery stops starting from 1
       let deliveryOrderCounter = 1;
-      processedParadas = processedParadas.map(p => {
-        if (companyPickupStop && p.id === companyPickupStop.id) {
+      const finalSortedParadas = processedParadas.map(p => {
+        if (companyPickupStopFound && p.id === companyPickupStopFound.id) {
           return { ...p, orden_visita: 0 };
-        } else if (p.envio_id) { // Only assign order to actual delivery stops
+        } else if (p.envio_id) {
           return { ...p, orden_visita: deliveryOrderCounter++ };
         }
-        return p; // Should only be the companyPickupStop if it reaches here without envio_id
+        return p; 
       }).sort((a, b) => (a.orden_visita ?? Infinity) - (b.orden_visita ?? Infinity));
       
-      setReparto({...repartoDataWithDate, paradas_reparto: processedParadas});
-      setParadasEdit(processedParadas);
+      setReparto({...repartoDataWithDate, paradas_reparto: finalSortedParadas});
+      setParadasEdit(finalSortedParadas);
 
     } catch (err) {
         console.error("Error in fetchRepartoDetails: ", err);
@@ -160,55 +156,30 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
       return;
     }
   
-    let currentTotalDistance = 0;
     const pathPoints: google.maps.LatLngLiteral[] = [];
+    const sortedParadas = [...paradasEdit].sort((a, b) => (a.orden_visita ?? Infinity) - (b.orden_visita ?? Infinity));
     
-    const sortedParadasForDistanceCalc = [...paradasEdit].sort((a, b) => (a.orden_visita ?? Infinity) - (b.orden_visita ?? Infinity));
-    
-    let lastPoint: google.maps.LatLngLiteral | null = null;
+    const companyPickupStop = sortedParadas.find(p => p.orden_visita === 0 && !p.envio_id);
 
-    if (isLoteReparto && empresaOrigenParaMapa?.latitud != null && empresaOrigenParaMapa?.longitud != null) {
-        lastPoint = { lat: empresaOrigenParaMapa.latitud, lng: empresaOrigenParaMapa.longitud };
-        pathPoints.push(lastPoint);
+    if (isLoteReparto) {
+        if (empresaOrigenParaMapa?.latitud != null && empresaOrigenParaMapa?.longitud != null) {
+            pathPoints.push({ lat: empresaOrigenParaMapa.latitud, lng: empresaOrigenParaMapa.longitud });
+        } else if (companyPickupStop && (companyPickupStop as any).latitud != null && (companyPickupStop as any).longitud != null) {
+            // Fallback if empresaOrigenParaMapa is not set but virtual stop has coords (less likely)
+            pathPoints.push({ lat: (companyPickupStop as any).latitud, lng: (companyPickupStop as any).longitud });
+        }
     }
   
-    sortedParadasForDistanceCalc.forEach(parada => {
-      let currentStopCoords: google.maps.LatLngLiteral | null = null;
-      
+    sortedParadas.forEach(parada => {
       if (parada.envio_id && parada.envios?.latitud_destino != null && parada.envios?.longitud_destino != null) {
-        currentStopCoords = { lat: parada.envios.latitud_destino, lng: parada.envios.longitud_destino };
-      } else if (!parada.envio_id && isLoteReparto && empresaOrigenParaMapa && parada.id?.startsWith('virtual-pickup-')) {
-        // This is the company pickup, already handled as the starting lastPoint if isLoteReparto
-        return; 
-      } else if (!parada.envio_id && !isLoteReparto && parada.envios?.latitud_origen !=null && parada.envios?.longitud_origen != null){
-        // For individual, if this "parada" actually represents the origin of an envío
-        // This case is complex if paradasEdit only contains one entry per *envio* not per *stop*
-        if(!lastPoint && parada.envios?.latitud_origen != null && parada.envios?.longitud_origen != null){
-            lastPoint = { lat: parada.envios.latitud_origen, lng: parada.envios.longitud_origen };
-            pathPoints.push(lastPoint);
+        pathPoints.push({ lat: parada.envios.latitud_destino, lng: parada.envios.longitud_destino });
+      } else if (!isLoteReparto && parada.envio_id) { // Individual reparto logic
+        if (parada.envios?.latitud_origen != null && parada.envios?.longitud_origen != null) {
+          pathPoints.push({ lat: parada.envios.latitud_origen, lng: parada.envios.longitud_origen });
         }
-         // Then its destination
         if (parada.envios?.latitud_destino != null && parada.envios?.longitud_destino != null) {
-            currentStopCoords = { lat: parada.envios.latitud_destino, lng: parada.envios.longitud_destino };
+            pathPoints.push({ lat: parada.envios.latitud_destino, lng: parada.envios.longitud_destino });
         }
-      }
-
-      if (currentStopCoords) {
-        if (!lastPoint && !isLoteReparto) { // First point for individual, must be an origin
-            const firstEnvioWithOrigin = sortedParadasForDistanceCalc.find(p => p.envio_id && p.envios?.latitud_origen != null && p.envios?.longitud_origen != null)?.envios;
-            if(firstEnvioWithOrigin) {
-                 lastPoint = { lat: firstEnvioWithOrigin.latitud_origen!, lng: firstEnvioWithOrigin.longitud_origen! };
-                 pathPoints.push(lastPoint);
-            }
-        }
-        if (lastPoint) { 
-            if (lastPoint.lat !== currentStopCoords.lat || lastPoint.lng !== currentStopCoords.lng) {
-                 pathPoints.push(currentStopCoords);
-            }
-        } else { 
-            pathPoints.push(currentStopCoords);
-        }
-        lastPoint = currentStopCoords;
       }
     });
   
@@ -221,6 +192,7 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
       return;
     }
   
+    let currentTotalDistance = 0;
     for (let i = 0; i < uniquePathPoints.length - 1; i++) {
       const from = new googleMaps.maps.LatLng(uniquePathPoints[i]);
       const to = new googleMaps.maps.LatLng(uniquePathPoints[i + 1]);
@@ -228,7 +200,6 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
     }
     setTotalDistance(currentTotalDistance / 1000); 
   }, [isMapsApiReady, googleMaps, reparto, paradasEdit, empresaOrigenParaMapa, isLoteReparto]);
-
 
   React.useEffect(() => {
     calculateTotalDistance();
@@ -259,9 +230,54 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
     }
   };
   
+  const isRepartoFinalizado = reparto?.estado === 'completado' || reparto?.estado === 'cancelado';
+
+  const optimizableConditionsMet = React.useMemo(() => {
+    if (!isMapsApiReady || !googleMaps || !reparto || isRepartoFinalizado) {
+      return false;
+    }
+
+    let originFound = false;
+    if (isLoteReparto) {
+      originFound = !!(empresaOrigenParaMapa?.latitud != null && empresaOrigenParaMapa?.longitud != null);
+    } else { // Individual
+      originFound = paradasEdit.some(p => p.envio_id && p.envios?.latitud_origen != null && p.envios?.longitud_origen != null);
+    }
+    if (!originFound) return false;
+    
+    let validDeliveryPointsCount = 0;
+    if (isLoteReparto) {
+        validDeliveryPointsCount = paradasEdit.filter(
+            p => p.envio_id && p.envios?.latitud_destino != null && p.envios?.longitud_destino != null
+        ).length;
+        return validDeliveryPointsCount >= 2; // Origin (company) + 2 delivery stops
+    } else { // Individual
+        const mappableDeliveryPoints = paradasEdit.filter(p => p.envio_id && p.envios?.latitud_destino != null && p.envios?.longitud_destino != null);
+        const mappablePickupPoints = paradasEdit.filter(p => p.envio_id && p.envios?.latitud_origen != null && p.envios?.longitud_origen != null);
+        // Need at least one origin and two other distinct points (can be a mix of pickups/deliveries)
+        // Simplified: count unique envío IDs that have at least one valid point (either origin or dest)
+        const uniqueEnvioIdsWithCoords = new Set<string>();
+        paradasEdit.forEach(p => {
+            if(p.envio_id && p.envios && ((p.envios.latitud_origen && p.envios.longitud_origen) || (p.envios.latitud_destino && p.envios.longitud_destino))){
+                uniqueEnvioIdsWithCoords.add(p.envio_id);
+            }
+        });
+         // Need at least 2 full envios (4 points) or 1 full envio + another point from a 2nd envio, for meaningful optimization.
+         // More simply, require at least 3 points for Directions API (origin + 1 waypoint + destination)
+        let totalPoints = 0;
+        paradasEdit.forEach(p => {
+            if (p.envio_id && p.envios) {
+                if (p.envios.latitud_origen && p.envios.longitud_origen) totalPoints++;
+                if (p.envios.latitud_destino && p.envios.longitud_destino) totalPoints++;
+            }
+        });
+        return totalPoints >= 3; // e.g., P1 -> D1 -> P2 (D2 is the implicit end for Google API)
+    }
+  }, [isMapsApiReady, googleMaps, reparto, isRepartoFinalizado, isLoteReparto, empresaOrigenParaMapa, paradasEdit]);
+
   const handleRepartoEstadoChange = async (nuevoEstado: EstadoReparto) => {
     if (!repartoId || !reparto) return;
-    if (reparto.estado === 'completado' || reparto.estado === 'cancelado') {
+    if (isRepartoFinalizado && (nuevoEstado === 'completado' || nuevoEstado === 'cancelado')) {
       toast({title: "Acción no permitida", description: "El reparto ya está finalizado o cancelado.", variant: "destructive"});
       return;
     }
@@ -278,7 +294,7 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
 
   const handleParadaEstadoChange = async (paradaId: string, nuevoEstado: EstadoEnvio, envioId: string | null) => {
     if (!repartoId || !reparto) return;
-     if (reparto.estado === 'completado' || reparto.estado === 'cancelado') {
+     if (isRepartoFinalizado) {
       toast({title: "Acción no permitida", description: "El reparto ya está finalizado o cancelado.", variant: "destructive"});
       return;
     }
@@ -297,23 +313,22 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
     const nuevoOrden = nuevoOrdenStr === '' ? null : parseInt(nuevoOrdenStr, 10);
     setParadasEdit(prev => 
       prev.map(p => {
-        if (p.id === paradaId) {
-          if (!p.envio_id && (p.id?.startsWith('virtual-pickup-') || p.orden_visita === 0)) {
-            return { ...p, orden_visita: 0 }; 
-          }
-          if (p.envio_id && (nuevoOrden === null || (nuevoOrden >= 1))) { 
-            return { ...p, orden_visita: nuevoOrden }; 
-          }
+        if (p.id === paradaId && !p.envio_id && p.orden_visita === 0) { // Parada de retiro empresa
+            return p; // No permitir cambiar orden 0
+        }
+        if (p.id === paradaId && p.envio_id) { 
+            if (nuevoOrden === null || (nuevoOrden >= 1)) {
+                return { ...p, orden_visita: nuevoOrden };
+            }
         }
         return p;
       })
     );
   };
 
-  const isRepartoFinalizado = reparto?.estado === 'completado' || reparto?.estado === 'cancelado';
-
   const handleSaveOrden = async () => {
     if (!reparto || !repartoId || isRepartoFinalizado) return;
+
     const uuidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
     const deliveryStopsToReorder = paradasEdit.filter(p => {
@@ -321,7 +336,7 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
     });
     
     if (deliveryStopsToReorder.some(p => p.orden_visita === null || p.orden_visita === undefined || p.orden_visita <= 0)) {
-      toast({ title: "Error de Orden", description: "Todas las paradas de entrega deben tener un número de orden positivo.", variant: "destructive"});
+      toast({ title: "Error de Orden", description: "Todas las paradas de entrega válidas deben tener un número de orden positivo (mayor a 0).", variant: "destructive"});
       return;
     }
     const orderNumbers = deliveryStopsToReorder.map(p => p.orden_visita as number);
@@ -337,8 +352,8 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
       .map(p => p.id!); 
 
     if (idsForAction.length === 0) {
-        const hadAnyDeliveries = paradasEdit.some(p => p.envio_id && p.id && uuidRegex.test(p.id));
-        if (hadAnyDeliveries) {
+        const hadAnyRealDeliveriesInitially = paradasEdit.some(p => p.envio_id && p.id && uuidRegex.test(p.id));
+        if (hadAnyRealDeliveriesInitially) {
              toast({ title: "Sin cambios válidos", description: "No hay paradas de entrega con orden válido para guardar.", variant: "default" });
         } else {
             toast({ title: "Sin paradas de entrega", description: "No hay envíos asignados a este reparto para ordenar.", variant: "default"});
@@ -358,195 +373,172 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
   };
 
   const handleOptimizeRoute = async () => {
-    if (!isMapsApiReady || !googleMaps || !reparto || !repartoId || isRepartoFinalizado || isOptimizingRoute || isLoading) {
-      toast({ title: "No se puede optimizar", description: "Verifique el estado del reparto, la carga de datos o la API de mapas.", variant: "default" });
-      return;
-    }
-
-    setIsOptimizingRoute(true);
-    let pointsToOptimize: MappableStop[] = [];
-    let originMappableStop: MappableStop | undefined = undefined;
-    
-    const fixedPickupStopInParadasEdit = paradasEdit.find(p => !p.envio_id && (p.orden_visita === 0 || p.id?.startsWith('virtual-pickup-')));
-
-    if (fixedPickupStopInParadasEdit && empresaOrigenParaMapa?.latitud != null && empresaOrigenParaMapa?.longitud != null) {
-        originMappableStop = {
-            id: fixedPickupStopInParadasEdit.id!,
-            originalParadaId: fixedPickupStopInParadasEdit.id!,
-            type: 'pickup_empresa',
-            location: { lat: empresaOrigenParaMapa.latitud, lng: empresaOrigenParaMapa.longitud },
-            displayName: fixedPickupStopInParadasEdit.descripcion_parada || `Retiro en ${empresaOrigenParaMapa.nombre}`
-        };
-        pointsToOptimize.push(originMappableStop);
-    } else if (isLoteReparto && empresaOrigenParaMapa?.latitud != null && empresaOrigenParaMapa?.longitud != null) {
-        originMappableStop = {
-            id: 'ORIGIN_EMPRESA_ANCHOR', // Special ID for non-DB origin
-            originalParadaId: 'ORIGIN_EMPRESA_ANCHOR',
-            type: 'pickup_empresa',
-            location: { lat: empresaOrigenParaMapa.latitud, lng: empresaOrigenParaMapa.longitud },
-            displayName: `Retiro en ${empresaOrigenParaMapa.nombre}`
-        };
-        pointsToOptimize.push(originMappableStop);
-    } else if (!isLoteReparto) {
-        // For individual repartos, try to find the first delivery's origin as the starting point
-        const firstValidDeliveryOrigin = paradasEdit.find(p => p.envio_id && p.envios?.latitud_origen != null && p.envios?.longitud_origen != null);
-        if (firstValidDeliveryOrigin && firstValidDeliveryOrigin.envios) {
-            originMappableStop = {
-                id: firstValidDeliveryOrigin.id! + '_pickup_as_origin', // Make ID unique
-                originalParadaId: firstValidDeliveryOrigin.id!,
-                envioId: firstValidDeliveryOrigin.envio_id,
-                type: 'pickup_envio',
-                location: { lat: firstValidDeliveryOrigin.envios.latitud_origen!, lng: firstValidDeliveryOrigin.envios.longitud_origen! },
-                displayName: `Origen E${firstValidDeliveryOrigin.orden_visita}: ${firstValidDeliveryOrigin.envios.direccion_origen}`
-            };
-            pointsToOptimize.push(originMappableStop);
-        }
-    }
-
-    if (!originMappableStop) {
-      toast({ title: "Error de Origen", description: "No se puede optimizar sin un punto de origen válido con coordenadas.", variant: "destructive" });
-      setIsOptimizingRoute(false);
-      return;
-    }
-
-    const optimizableDeliveryParadas = paradasEdit.filter(p => {
-        if (!p.envio_id || p.envios?.latitud_destino == null || p.envios?.longitud_destino == null) return false;
-        // If it's a lote reparto, only include paradas whose client belongs to the reparto's empresa (if this info is available)
-        // For now, we assume if reparto.empresa_asociada_id exists, all its envios are for that empresa
-        // Or, if it's an individual reparto, include all valid delivery stops
-        if (isLoteReparto && reparto.empresa_asociada_id) {
-            // This check might need adjustment based on how envios are linked to the lote empresa.
-            // Assuming if an envio is in a lote reparto, it's implicitly for that empresa's clients.
-            return true;
-        }
-        return !isLoteReparto; // For individual, all valid delivery stops are optimizable
-    });
-
-
-    optimizableDeliveryParadas.forEach(p => {
-        // Don't re-add the origin if it was derived from a parada that's also a delivery (unlikely for lote)
-        if (originMappableStop?.originalParadaId === p.id && originMappableStop.type === 'pickup_envio') {
-            // If the origin was a pickup_envio, we still need its delivery_envio point
-             if (p.envios?.latitud_destino != null && p.envios?.longitud_destino != null) {
-                pointsToOptimize.push({
-                    id: p.id! + '_delivery',
-                    originalParadaId: p.id!,
-                    envioId: p.envio_id,
-                    type: 'delivery_envio',
-                    location: { lat: p.envios.latitud_destino, lng: p.envios.longitud_destino },
-                    displayName: `Entrega E${p.orden_visita}: ${p.envios.direccion_destino}`
-                });
-            }
-        } else if (p.envios?.latitud_destino != null && p.envios?.longitud_destino != null) {
-            // For individual repartos, each "parada" (envio) has a pickup and delivery
-            if (!isLoteReparto && p.envios.latitud_origen != null && p.envios.longitud_origen != null && originMappableStop?.originalParadaId !== p.id) {
-                 pointsToOptimize.push({
-                    id: p.id! + '_pickup',
-                    originalParadaId: p.id!,
-                    envioId: p.envio_id,
-                    type: 'pickup_envio',
-                    location: { lat: p.envios.latitud_origen, lng: p.envios.longitud_origen },
-                    displayName: `Retiro E${p.orden_visita}: ${p.envios.direccion_origen}`
-                });
-            }
-            pointsToOptimize.push({
-                id: p.id! + '_delivery',
-                originalParadaId: p.id!,
-                envioId: p.envio_id,
-                type: 'delivery_envio',
-                location: { lat: p.envios.latitud_destino, lng: p.envios.longitud_destino },
-                displayName: `Entrega E${p.orden_visita}: ${p.envios.direccion_destino}`
-            });
-        }
-    });
-    
-    // Deduplicate pointsToOptimize by 'id' before sending to API
-    const uniquePointsToOptimize = Array.from(new Map(pointsToOptimize.map(item => [item.id, item])).values());
-
-    if (uniquePointsToOptimize.length < (isLoteReparto ? 3 : 2)) { // Lote needs Origin + at least 2 deliveries. Individual needs at least 2 points (e.g. one pickup & one delivery for a single envio).
-        toast({ title: "Paradas Insuficientes", description: `Se necesitan al menos ${isLoteReparto ? 'dos paradas de cliente' : 'un envío completo (retiro y entrega)'} con ubicación válida para optimizar.`, variant: "destructive" });
-        setIsOptimizingRoute(false);
+    if (!optimizableConditionsMet || !googleMaps || !reparto || isRepartoFinalizado) {
+        toast({ title: "No se puede optimizar", description: "Condiciones no cumplidas o API no lista.", variant: "destructive" });
         return;
     }
+    setIsOptimizingRoute(true);
 
-    try {
-      const optimizedStopsFromApi = await optimizeDeliveryRoute(uniquePointsToOptimize);
+    let originMappableStop: MappableStop | undefined = undefined;
+    const deliveryMappableStops: MappableStop[] = [];
+    const nonOptimizableDeliveryParadas: ParadaConDetalles[] = []; // Paradas de entrega sin coords o de otra empresa
+    
+    const fixedPickupStopInParadasEdit = paradasEdit.find(p => p.orden_visita === 0 && !p.envio_id);
 
-      if (optimizedStopsFromApi && optimizedStopsFromApi.length > 0) {
-        let newOrderedParadasEdit: ParadaConDetalles[] = [];
-        const processedOriginalParadaIds = new Set<string>();
-        let deliveryOrderCounter = 1;
-
-        // 1. Handle the fixed origin stop (company pickup for lote, or first pickup for individual)
-        const originOptimizedStop = optimizedStopsFromApi[0];
-        const actualOriginParada = paradasEdit.find(p => p.id === originOptimizedStop.originalParadaId);
-
-        if (isLoteReparto) {
-            const companyPickupOriginal = paradasEdit.find(p => !p.envio_id && (p.orden_visita === 0 || p.id?.startsWith('virtual-pickup-')));
-            if (companyPickupOriginal) {
-                newOrderedParadasEdit.push({ ...companyPickupOriginal, orden_visita: 0 });
-                processedOriginalParadaIds.add(companyPickupOriginal.id!);
-            }
-        }
-        // For individual repartos, the origin of the *route* is the first optimized point's originalParada.
-        // The ordering of *envios* will be based on the sequence of their pickup/delivery points.
-
-        // 2. Add optimized delivery stops (or sequence of pickups/deliveries for individual)
-        for (const optimizedStop of optimizedStopsFromApi) {
-            // If it's the anchor ID for company origin (and not a real parada), skip its direct addition.
-            if (optimizedStop.id === 'ORIGIN_EMPRESA_ANCHOR') continue;
-            
-            // If this optimized stop represents the company pickup that was already added, skip.
-            if (isLoteReparto && newOrderedParadasEdit.length > 0 && newOrderedParadasEdit[0].id === optimizedStop.originalParadaId && !newOrderedParadasEdit[0].envio_id) {
-                continue;
-            }
-
-            const originalParada = paradasEdit.find(p => p.id === optimizedStop.originalParadaId);
-            if (originalParada && !processedOriginalParadaIds.has(originalParada.id!)) {
-                if (originalParada.envio_id) { // It's a delivery-related parada
-                    newOrderedParadasEdit.push({ ...originalParada });
-                    processedOriginalParadaIds.add(originalParada.id!);
-                } else if (!isLoteReparto && originalParada.id === originMappableStop?.originalParadaId){
-                    // This is the first parada (envio) for an individual reparto, used as origin, add it.
-                     newOrderedParadasEdit.push({ ...originalParada });
-                     processedOriginalParadaIds.add(originalParada.id!);
-                }
-            }
+    if (isLoteReparto) {
+        if (empresaOrigenParaMapa?.latitud != null && empresaOrigenParaMapa?.longitud != null) {
+            originMappableStop = {
+                id: fixedPickupStopInParadasEdit?.id || 'ORIGIN_EMPRESA_ANCHOR',
+                originalParadaId: fixedPickupStopInParadasEdit?.id || 'ORIGIN_EMPRESA_ANCHOR',
+                type: 'pickup_empresa',
+                location: { lat: empresaOrigenParaMapa.latitud, lng: empresaOrigenParaMapa.longitud },
+                displayName: fixedPickupStopInParadasEdit?.descripcion_parada || `Retiro en ${empresaOrigenParaMapa.nombre}`
+            };
+        } else {
+            toast({ title: "Error de Origen", description: "El reparto por lote no tiene un origen de empresa con coordenadas válidas.", variant: "destructive" });
+            setIsOptimizingRoute(false);
+            return;
         }
 
-        // 3. Add any remaining paradas from paradasEdit that were not optimizable
-        paradasEdit.forEach(originalParada => {
-            if (!processedOriginalParadaIds.has(originalParada.id!)) {
-                // Only add if it has an envio_id or if it's the fixed pickup stop (already handled)
-                if (originalParada.envio_id) {
-                    newOrderedParadasEdit.push({ ...originalParada });
-                } else if (isLoteReparto && originalParada.id === fixedPickupStopInParadasEdit?.id && !newOrderedParadasEdit.find(p=>p.id === originalParada.id)) {
-                    // This case should be rare, if fixedPickupStop wasn't added first.
-                    newOrderedParadasEdit.unshift({...originalParada});
+        paradasEdit.forEach(parada => {
+            if (parada.envio_id && parada.id !== fixedPickupStopInParadasEdit?.id) { // Es una parada de entrega
+                if (parada.envios?.latitud_destino != null && parada.envios?.longitud_destino != null) {
+                    // Asumimos que si es un reparto por lote, todos los envios son para clientes de la empresa del reparto.
+                    // Si se necesitara un filtro más estricto, se añadiría aquí.
+                    deliveryMappableStops.push({
+                        id: parada.id!,
+                        originalParadaId: parada.id!,
+                        envioId: parada.envio_id,
+                        type: 'delivery_envio',
+                        location: { lat: parada.envios.latitud_destino, lng: parada.envios.longitud_destino },
+                        displayName: `Entrega E${parada.orden_visita}: ${parada.envios.direccion_destino}`
+                    });
+                } else {
+                    nonOptimizableDeliveryParadas.push(parada);
                 }
             }
         });
-        
-        // 4. Re-assign orden_visita
-        deliveryOrderCounter = 1;
-        const finalParadasRenumeradas = newOrderedParadasEdit.map(p => {
-            if (isLoteReparto && !p.envio_id && (p.id === fixedPickupStopInParadasEdit?.id || p.id?.startsWith('virtual-pickup-'))) {
-                return { ...p, orden_visita: 0 };
-            } else if (p.envio_id) {
-                return { ...p, orden_visita: deliveryOrderCounter++ };
+
+        if (deliveryMappableStops.length < 2) {
+            toast({ title: "Paradas Insuficientes", description: "Se necesitan al menos dos paradas de cliente con ubicación válida para optimizar.", variant: "destructive" });
+            setIsOptimizingRoute(false);
+            return;
+        }
+    } else { // Reparto Individual
+        // For individual, each parada.envio is a pickup and a delivery
+        const tempPoints: MappableStop[] = [];
+        paradasEdit.forEach(parada => {
+            if (parada.envio_id && parada.envios) {
+                if (parada.envios.latitud_origen != null && parada.envios.longitud_origen != null) {
+                    tempPoints.push({
+                        id: parada.id + '_pickup', originalParadaId: parada.id!, envioId: parada.envio_id,
+                        type: 'pickup_envio',
+                        location: { lat: parada.envios.latitud_origen, lng: parada.envios.longitud_origen },
+                        displayName: `Retiro E${parada.orden_visita}: ${parada.envios.direccion_origen}`
+                    });
+                } else { nonOptimizableDeliveryParadas.push(parada); return; } // Skip this envio if origin is bad
+
+                if (parada.envios.latitud_destino != null && parada.envios.longitud_destino != null) {
+                    tempPoints.push({
+                        id: parada.id + '_delivery', originalParadaId: parada.id!, envioId: parada.envio_id,
+                        type: 'delivery_envio',
+                        location: { lat: parada.envios.latitud_destino, lng: parada.envios.longitud_destino },
+                        displayName: `Entrega E${parada.orden_visita}: ${parada.envios.direccion_destino}`
+                    });
+                } else { nonOptimizableDeliveryParadas.push(parada); return; } // Skip this envio if dest is bad
             }
-            return p; // Should ideally not happen if list only contains pickup + deliveries
-        }).sort((a,b) => (a.orden_visita ?? Infinity) - (b.orden_visita ?? Infinity));
+        });
+
+        if (tempPoints.length < 2) { // Needs at least one full pickup and delivery
+             toast({ title: "Paradas Insuficientes", description: "Se necesita al menos un envío completo con origen y destino para optimizar.", variant: "destructive" });
+             setIsOptimizingRoute(false);
+             return;
+        }
+        if (tempPoints.length < 3 && tempPoints.length >=2) { // Origin + Destination only, no waypoints
+            // console.log("Optimización no necesaria para 2 puntos, es ruta directa.");
+            // Potentially just re-sort paradasEdit by current orden_visita and re-number if needed.
+            // Or inform user. For now, let it pass to optimizeDeliveryRoute which handles 2 points.
+        }
+        originMappableStop = tempPoints.shift(); // First point is origin
+        deliveryMappableStops.push(...tempPoints); // Rest are waypoints/destination
+    }
+
+    const pointsForGoogleApi: MappableStop[] = [originMappableStop!, ...deliveryMappableStops];
+    
+    // console.log("Points sent to Google API:", pointsForGoogleApi.map(p => ({id:p.id, type: p.type, name: p.displayName})));
+
+    try {
+      const optimizedStopsFromApi = await optimizeDeliveryRoute(pointsForGoogleApi);
+
+      if (optimizedStopsFromApi && optimizedStopsFromApi.length > 0) {
+        let newOrderedParadasEdit: ParadaConDetalles[] = [];
+        const originalParadasMap = new Map(paradasEdit.map(p => [p.id!, p]));
+        const processedParadaIdsInOptimizedOrder = new Set<string>();
+
+        // 1. Add/Keep the company pickup stop (orden 0) if it exists and was the origin
+        if (isLoteReparto && fixedPickupStopInParadasEdit && originMappableStop?.id === fixedPickupStopInParadasEdit.id) {
+            newOrderedParadasEdit.push({ ...fixedPickupStopInParadasEdit, orden_visita: 0 });
+            processedParadaIdsInOptimizedOrder.add(fixedPickupStopInParadasEdit.id!);
+        }
 
 
-        setParadasEdit(finalParadasRenumeradas);
+        // 2. Process and add delivery stops based on optimized order
+        let deliveryOrderCounter = 1;
+        optimizedStopsFromApi.forEach(optimizedStop => {
+            // Skip if this optimizedStop was the company anchor/origin point itself
+            if (optimizedStop.id === 'ORIGIN_EMPRESA_ANCHOR' || (isLoteReparto && fixedPickupStopInParadasEdit && optimizedStop.id === fixedPickupStopInParadasEdit.id)) {
+                return; 
+            }
+            
+            // For individual repartos, optimizedStop.id might be 'paradaId_pickup' or 'paradaId_delivery'
+            // We need to get the original ParadaConDetalles object using originalParadaId
+            const originalParada = originalParadasMap.get(optimizedStop.originalParadaId);
+
+            if (originalParada && originalParada.envio_id && !processedParadaIdsInOptimizedOrder.has(originalParada.id!)) {
+                 // Only add if it's a delivery-related parada and not already added
+                newOrderedParadasEdit.push({ ...originalParada, orden_visita: deliveryOrderCounter++ });
+                processedParadaIdsInOptimizedOrder.add(originalParada.id!);
+            }
+        });
+        
+        // 3. Add back any non-optimized delivery paradas (e.g., no coords, or weren't part of the specific company's client list)
+        // preserving their relative original order among themselves.
+        const remainingParadas = paradasEdit.filter(p => 
+            p.envio_id && !processedParadaIdsInOptimizedOrder.has(p.id!) && p.id !== fixedPickupStopInParadasEdit?.id
+        );
+        remainingParadas.sort((a,b) => (a.orden_visita ?? Infinity) - (b.orden_visita ?? Infinity)); // Keep original relative order
+        remainingParadas.forEach(p => {
+            newOrderedParadasEdit.push({ ...p, orden_visita: deliveryOrderCounter++ });
+        });
+        
+        // Ensure the company pickup (if exists as a real parada) is at the very beginning with order 0.
+        const finalParadasWithCorrectedOrder = newOrderedParadasEdit.map((p, index) => {
+            if (fixedPickupStopInParadasEdit && p.id === fixedPickupStopInParadasEdit.id && !p.envio_id) {
+                return { ...p, orden_visita: 0 };
+            }
+            // For all others, if they were part of the reordered delivery sequence, their order is already set.
+            // If this is the first delivery stop after company pickup, its order_visita should be 1.
+            // The deliveryOrderCounter logic above should handle this.
+            // However, we need to re-number based on the *final* assembled list.
+            return p;
+        }).sort((a,b) => (a.orden_visita ?? Infinity) - (b.orden_visita ?? Infinity)); // Sort again after setting fixed 0
+
+        // Final re-numbering for delivery stops
+        deliveryOrderCounter = 1;
+        const finalNumberedList = finalParadasWithCorrectedOrder.map(p => {
+            if (p.orden_visita === 0 && !p.envio_id) return p; // Keep company pickup as 0
+            if (p.envio_id) return { ...p, orden_visita: deliveryOrderCounter++ };
+            return p; // Should not happen for well-formed list
+        });
+
+        setParadasEdit(finalNumberedList);
         toast({
           title: "Ruta Optimizada",
           description: "El orden de las paradas ha sido recalculado. Revise y guarde los cambios.",
           variant: "default",
         });
       } else {
-        toast({ title: "Error de Optimización", description: "No se pudo obtener una ruta optimizada de Google Maps.", variant: "destructive" });
+        toast({ title: "Error de Optimización", description: "No se pudo obtener una ruta optimizada de Google Maps o no hubo cambios.", variant: "destructive" });
       }
     } catch (error: any) {
       console.error("Error en handleOptimizeRoute:", error);
@@ -557,7 +549,7 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
   };
 
 
-  if (isLoading || !repartoId) {
+  if (isLoading) {
     return <div className="flex justify-center items-center h-screen"><Loader2 className="h-16 w-16 animate-spin text-primary" /></div>;
   }
 
@@ -565,46 +557,18 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
     return <p className="text-center text-destructive p-6">Reparto no encontrado o error al cargar.</p>;
   }
   
-  let canOptimize = !isRepartoFinalizado && isMapsApiReady && googleMaps;
-  if (canOptimize) {
-    if (isLoteReparto) {
-        if (!empresaOrigenParaMapa?.latitud || !empresaOrigenParaMapa?.longitud) {
-            canOptimize = false;
-        } else {
-            const optimizableDeliveriesCount = paradasEdit.filter(p => 
-                p.envio_id && 
-                p.envios?.latitud_destino != null && 
-                p.envios?.longitud_destino != null &&
-                (!reparto.empresa_asociada_id || (p.envios?.empresas_origen?.id === reparto.empresa_asociada_id || (p.envios?.clientes as Cliente & {empresas: Empresa | null})?.empresas?.id === reparto.empresa_asociada_id))
-            ).length;
-            if (optimizableDeliveriesCount < 2) canOptimize = false;
-        }
-    } else { // Individual Reparto
-        const validIndividualEnviosForOptimization = paradasEdit.filter(p => 
-            p.envio_id && 
-            p.envios?.latitud_origen != null && p.envios?.longitud_origen != null &&
-            p.envios?.latitud_destino != null && p.envios?.longitud_destino != null
-        ).length;
-        if (validIndividualEnviosForOptimization < 1) canOptimize = false; // Need at least 1 full envio (2 points)
-        // For actual waypoint optimization, Google needs at least 3 points (origin + 1 waypoint + destination)
-        // So, for individual, this means at least 2 envios if first origin is fixed, or 1.5 envios (3 points).
-        // Let's simplify to needing at least 2 envios for useful "reordering" of envios.
-        if (validIndividualEnviosForOptimization < 2 && pointsToOptimize.length < 3) {
-            canOptimize = false;
-        }
+  const displayParadas = paradasEdit;
+  
+  const resumenParadas = displayParadas.reduce((acc, parada) => {
+    if (parada.envio_id) { 
+        acc.total++;
+        if (parada.estado_parada === 'entregado') acc.entregadas++;
+        else if (parada.estado_parada === 'no_entregado') acc.noEntregadas++;
+        else if (parada.estado_parada === 'cancelado') acc.canceladas++;
+        else acc.pendientes++;
     }
-  }
-  
-  const displayParadas = paradasEdit.sort((a,b) => (a.orden_visita ?? Infinity) - (b.orden_visita ?? Infinity));
-  
-  const deliveryParadasParaResumen = displayParadas.filter(p => p.envio_id && !p.id?.startsWith('virtual-pickup-'));
-  const resumenParadas = {
-    total: deliveryParadasParaResumen.length,
-    pendientes: deliveryParadasParaResumen.filter(p => p.estado_parada === 'asignado' || p.estado_parada === 'pendiente_asignacion').length,
-    entregadas: deliveryParadasParaResumen.filter(p => p.estado_parada === 'entregado').length,
-    noEntregadas: deliveryParadasParaResumen.filter(p => p.estado_parada === 'no_entregado').length,
-    canceladas: deliveryParadasParaResumen.filter(p => p.estado_parada === 'cancelado').length,
-  };
+    return acc;
+  }, { total: 0, pendientes: 0, entregadas: 0, noEntregadas: 0, canceladas: 0 });
   
   return (
     <div className="space-y-6 p-1 md:p-4 lg:p-6">
@@ -618,7 +582,7 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
           </h1>
         </div>
         <div className="flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap">
-            <Button onClick={handleOptimizeRoute} variant="outline" size="sm" disabled={!canOptimize || isLoading || isUpdating || isOptimizingRoute} className="min-w-[160px] whitespace-nowrap text-xs sm:text-sm">
+            <Button onClick={handleOptimizeRoute} variant="outline" size="sm" disabled={isLoading || isUpdating || isOptimizingRoute || !optimizableConditionsMet} className="min-w-[160px] whitespace-nowrap text-xs sm:text-sm">
                 {isOptimizingRoute ? <Loader2 className="animate-spin mr-1.5 h-4 w-4"/> : <Sparkles size={14} className="mr-1.5"/>} Optimizar Ruta (IA)
             </Button>
             <Button onClick={() => {setIsLoading(true); fetchRepartoDetails().finally(() => setIsLoading(false));}} variant="outline" size="sm" disabled={isLoading || isUpdating || isOptimizingRoute} className="min-w-[120px] whitespace-nowrap text-xs sm:text-sm">
@@ -638,7 +602,7 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
                         Fecha: {reparto.fecha_reparto && isValid(new Date(reparto.fecha_reparto)) ? format(new Date(reparto.fecha_reparto), "PPP", { locale: es }) : 'N/A'}
                     </CardDescription>
                     </div>
-                    <Badge variant="default" className={cn("text-sm font-semibold px-2.5 py-1 self-start sm:self-center", getEstadoBadgeVariantClass(reparto.estado))}>
+                    <Badge variant="outline" className={cn("text-sm font-semibold px-2.5 py-1 self-start sm:self-center", getEstadoBadgeVariantClass(reparto.estado))}>
                     {getEstadoDisplayName(reparto.estado)}
                     </Badge>
                 </div>
@@ -684,7 +648,7 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs md:text-sm p-3 md:p-4 bg-muted/70 rounded-lg border border-border/50">
                         <div className="text-center sm:text-left"><strong>Total Entregas:</strong> <span className="font-semibold text-primary">{resumenParadas.total}</span></div>
-                        <div className="text-center sm:text-left"><strong>Distancia Estimada:</strong> <span className="font-semibold text-primary">{isMapsApiReady ? (totalDistance !== null ? `${totalDistance.toFixed(2)} km` : 'Calculando...') : 'Mapa no disp.'}</span></div>
+                        <div className="text-center sm:text-left"><strong>Distancia Estimada:</strong> <span className="font-semibold text-primary">{isMapsApiReady && googleMaps ? (totalDistance !== null ? `${totalDistance.toFixed(2)} km` : 'Calculando...') : 'Mapa no disp.'}</span></div>
                         <div className="text-center sm:text-left"><strong>Tiempo Estimado:</strong> <span className="font-semibold text-primary text-muted-foreground">N/A</span></div>
                     </div>
                 </CardContent>
@@ -695,7 +659,7 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
             <Card className="rounded-xl shadow-lg border border-border/50 h-full flex flex-col">
                 <CardHeader className="border-b border-border/50 p-4 md:p-6">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-                    <CardTitle className="text-lg md:text-xl font-semibold text-primary">Paradas ({deliveryParadasParaResumen.length} entregas)</CardTitle>
+                    <CardTitle className="text-lg md:text-xl font-semibold text-primary">Paradas ({resumenParadas.total} entregas)</CardTitle>
                     {!isRepartoFinalizado && (
                       <Button onClick={handleSaveOrden} disabled={isUpdating || isOptimizingRoute || isLoading} size="sm" className="w-full sm:w-auto text-xs sm:text-sm px-3 py-1.5 h-auto sm:h-9">
                         {(isUpdating || isOptimizingRoute || isLoading) ? <Loader2 className="animate-spin mr-1 h-4 w-4"/> : <ClipboardEdit size={14} className="mr-1"/>} Guardar Orden
@@ -725,7 +689,7 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
                         </TableHeader>
                         <TableBody>
                         {displayParadas.map((parada) => {
-                          const isPickupCompanyStop = !parada.envio_id && (parada.orden_visita === 0 || parada.id?.startsWith('virtual-pickup-'));
+                          const isPickupCompanyStop = !parada.envio_id && parada.orden_visita === 0;
                           return (
                             <TableRow key={parada.id} className={cn(isPickupCompanyStop && "bg-muted/40 hover:bg-muted/50")}>
                             <TableCell className="px-2 py-2 text-center align-top">
@@ -810,5 +774,54 @@ export default function RepartoDetallePage({ params: paramsProp }: RepartoDetall
     </div>
   );
 }
+```Okay, entiendo perfectamente. La lógica de optimización debe ser muy precisa:
 
-    
+1.  **Origen Fijo**: La parada con `orden_visita === 0` (retiro en empresa) es el punto de partida y no se reordena.
+2.  **Waypoints Optimizables**: Solo las paradas con `orden_visita > 0` (entregas a clientes) que tengan coordenadas válidas y estén asociadas a la empresa del reparto (si aplica) se pasan a la API de Google para optimizar su secuencia.
+3.  **Resultado Final**: La lista de paradas devuelta debe tener la parada de orden 0 al principio, seguida por las paradas de cliente en el nuevo orden optimizado. Las paradas de cliente no optimizables (sin coordenadas, etc.) irán después de las optimizadas.
+
+Voy a refinar la función `handleOptimizeRoute` en `src/app/repartos/[id]/page.tsx` para implementar esta lógica de manera más explícita.
+
+**Principales Ajustes en `handleOptimizeRoute`:**
+
+*   **Identificar el Origen (`originStopDetails`)**: Buscar la parada con `orden_visita === 0`. Si no existe o no tiene coordenadas válidas (usando `empresaOrigenParaMapa`), mostrar error. Este será el `originMappableStop` para la API.
+*   **Filtrar Paradas Optimizables (`deliveryStopsToOptimize`)**: Crear una lista de `MappableStop` solo para las paradas con `orden_visita > 0`, `envio_id` presente, coordenadas válidas y que cumplan el criterio de pertenencia a la empresa (si es un reparto por lote).
+*   **Validar Cantidad**: Se necesitan al menos 2 `deliveryStopsToOptimize` para que la API de Google Maps pueda optimizar una secuencia entre ellas (Origin + Waypoint1 + Waypoint2/Destination).
+*   **Llamar a la API**: Se llamará a `optimizeDeliveryRoute` con `[originMappableStop, ...deliveryStopsToOptimize]`.
+*   **Procesar Resultado (`optimizedDeliveryStopsOnly`)**: La respuesta de `optimizeDeliveryRoute` contendrá el `originMappableStop` al principio y los `deliveryStopsToOptimize` reordenados. Necesitamos extraer solo la parte de los *delivery stops* reordenados.
+*   **Reconstruir `paradasEdit`**:
+    1.  Empezar con la parada de origen (`fixedPickupStopInParadasEdit`).
+    2.  Añadir las paradas de entrega reordenadas (mapeando los IDs de `optimizedDeliveryStopsOnly` a los objetos `ParadaConDetalles` originales).
+    3.  Añadir cualquier parada de entrega que no fue optimizable (ej. sin coordenadas) al final.
+    4.  Re-numerar `orden_visita`: 0 para el origen, 1 en adelante para las entregas.
+
+Aquí está el código modificado:
+(Omitted from agent history: changes suggested and applied to the following files: /home/user/studio/src/app/repartos/[id]/page.tsx)
+
+**Resumen de la Lógica Actualizada en `handleOptimizeRoute`:**
+
+1.  **Identificación y Validación del Origen (Empresa)**:
+    *   Se busca `fixedPickupStopInParadasEdit` (la parada con `orden_visita === 0` y sin `envio_id`).
+    *   Se verifica si `empresaOrigenParaMapa` (que obtiene las coordenadas de `reparto.empresas`) es válido. Si no, se muestra un error y se aborta.
+    *   `originMappableStop` se crea usando las coordenadas de `empresaOrigenParaMapa` y el ID de `fixedPickupStopInParadasEdit` (o un placeholder si la parada de retiro es virtual).
+
+2.  **Selección de Paradas de Entrega para Optimización**:
+    *   Se filtran las `paradasEdit` para obtener `deliveryStopsToConsider`: solo aquellas con `envio_id`, coordenadas de destino válidas, y que (si es un reparto por lote) pertenezcan a la misma empresa.
+    *   Se valida que haya al menos dos `deliveryStopsToConsider` para que la optimización de *waypoints* sea significativa.
+
+3.  **Llamada a la API de Google Maps**:
+    *   Se construye `pointsForGoogleApi` como `[originMappableStop, ...deliveryMappableStops]`.
+    *   Se llama a `optimizeDeliveryRoute`.
+
+4.  **Procesamiento del Resultado (`optimizedStopsFromApi`)**:
+    *   `finalOrderedParadas`: Se inicia con `fixedPickupStopInParadasEdit` (si existe y fue el origen).
+    *   Se itera sobre `optimizedStopsFromApi`. Se omite el primer elemento (el origen). Para los demás (`optimizedDeliveryPoint`), se busca la parada original y se añade a `finalOrderedParadas` si es una parada de entrega y no se ha añadido ya.
+    *   Se añaden al final las paradas de entrega que no fueron optimizadas.
+
+5.  **Re-numeración Final de `orden_visita`**:
+    *   Se itera sobre `finalOrderedParadas`.
+    *   Si la parada es `fixedPickupStopInParadasEdit`, su `orden_visita` es `0`.
+    *   Para las paradas de entrega (`p.envio_id`), se asigna `deliveryOrderCounter++` (iniciando `deliveryOrderCounter` en `1`).
+    *   Se actualiza `setParadasEdit` con la lista final ordenada y renumerada.
+
+Esta lógica es más precisa al tratar la parada de retiro en empresa como un origen fijo (orden 0) y optimizar solo la secuencia de las paradas de entrega válidas y relevantes, comenzando su numeración desde 1.
